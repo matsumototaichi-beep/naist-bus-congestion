@@ -39,8 +39,6 @@
 
   .log{flex:1 1 auto; min-height:0; overflow-y:auto; padding:6px 10px 14px;}
   .lhead{position:sticky; top:0; background:var(--bg); font-size:12px; color:var(--muted); padding:6px 2px; display:flex; justify-content:space-between; align-items:center;}
-  .lexport{border:1px solid var(--line); background:transparent; color:var(--ink); border-radius:9px; padding:6px 12px; font-size:12px; font-weight:700; font-family:inherit;}
-  .lexport:active{background:var(--line);}
   .empty{color:var(--muted); font-size:13px; text-align:center; padding:28px 10px;}
   .logrow{display:flex; align-items:center; gap:10px; padding:9px 6px; border-bottom:1px solid #1e2a3d;}
   .chip{flex:0 0 auto; width:26px; height:26px; border-radius:7px; color:#fff; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center;}
@@ -48,7 +46,8 @@
   .lmid{flex:1 1 auto; min-width:0;}
   .lcount{font-size:15px; font-weight:700;}
   .lsub{font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
-  .lgps{flex:0 0 auto; font-size:11px; color:var(--muted);}
+  .lstat{flex:0 0 auto; font-size:11px; color:var(--muted); text-align:right;}
+  .lstat.ok{color:#34d399;} .lstat.pend{color:#fbbf24;} .lstat.rec{color:#60a5fa;}
 
   .center{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; text-align:center; padding:16px;}
   .center h2{margin:0; font-size:18px; font-weight:700;}
@@ -62,29 +61,29 @@
   .row{display:flex; gap:10px; width:100%; max-width:420px;}
   .btn{flex:1; border:none; border-radius:14px; padding:15px; font-size:15px; font-weight:700; font-family:inherit; color:#fff;}
   .btn.primary{background:#2563eb;} .btn.ghost{background:transparent; color:var(--muted); border:1px solid var(--line);}
-  .btn.danger{background:transparent; color:#f87171; border:1px solid #7f1d1d; margin-top:6px;}
+  .btn.gh{background:#24292f; display:inline-flex; align-items:center; justify-content:center; gap:10px;}
   .btn:active{filter:brightness(.9);}
-
-  .sheet{position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:flex-end; z-index:20;}
-  .sheet.open{display:flex;}
-  .sheet .panel{width:100%; background:var(--panel); border-radius:18px 18px 0 0; padding:16px 16px 22px;}
-  .sheet h3{margin:0 0 12px; font-size:16px;}
-  .field{margin-bottom:12px;}
-  .field label{display:block; font-size:12px; color:var(--muted); margin-bottom:5px;}
-  .field input, .field select{width:100%; padding:13px; border-radius:11px; border:1px solid var(--line); background:var(--bg); color:var(--ink); font-size:16px; font-family:inherit;}
+  .btn:disabled{opacity:.5;}
 
   .statusbar{flex:0 0 auto; padding:6px 12px; font-size:12px; color:var(--muted); text-align:center; border-top:1px solid var(--line); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .statusbar.warn{background:#7c2d12; color:#fed7aa;}
 
   .toast{position:fixed; left:50%; bottom:44px; transform:translateX(-50%) translateY(12px); opacity:0; background:#16a34a; color:#fff; padding:10px 18px; border-radius:12px; font-size:14px; font-weight:700; transition:all .2s ease; pointer-events:none; z-index:30;}
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  /* login screen */
+  .login{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px; text-align:center;}
+  .login h1{font-size:22px; margin:0;}
+  .login p{color:var(--muted); font-size:14px; margin:0; max-width:340px; line-height:1.5;}
+  .login .btn{flex:0 0 auto; width:100%; max-width:320px;}
 </style>
 </head>
 <body>
 
-<header>
+<header id="hdr" style="display:none">
   <div class="sess" id="sess"></div>
   <button class="iconbtn" id="langBtn">EN</button>
-  <button class="iconbtn" id="setBtn">⚙</button>
+  <button class="iconbtn" id="outBtn">⎋</button>
 </header>
 
 <main id="main"></main>
@@ -92,134 +91,153 @@
 <div class="statusbar" id="status"></div>
 <div class="toast" id="toast"></div>
 
-<div class="sheet" id="sheet">
-  <div class="panel">
-    <h3 id="setTitle">調査設定</h3>
-    <div class="field"><label id="lblRoute">路線 (route_id)</label><input id="fRoute" placeholder="例: 50"></div>
-    <div class="field"><label id="lblStop">バス停 / 区間 (busstop_id)</label><input id="fStop" placeholder="例: 学園前→高の原"></div>
-    <div class="field"><label id="lblVeh">車両番号 (vehicle_id)</label><input id="fVeh" placeholder="例: 貸切1号車"></div>
-    <div class="field"><label id="lblType">回答者 (respondent_type)</label>
-      <select id="fType"><option value="staff">スタッフ / staff</option><option value="general">一般 / general</option></select></div>
-    <button class="btn primary" id="setSave">保存</button>
-    <button class="btn danger" id="clearBtn">全記録を削除</button>
-  </div>
-</div>
-
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* ==========================================================
-   ローカル保存版（DB・会員登録なし）
-   記録は端末内(localStorage)に保存され、CSVで書き出せます。
-   通信は一切行いません。GitHub Pages 等のHTTPSで公開すればGPSも動作。
+   バス混雑度 HITL 収集アプリ (Phase A)
+   - GitHubログイン(Supabase Auth OAuth)
+   - 回答者が押すのは「クラス＋人数」だけ
+   - 軌跡(2〜3秒間隔・約40秒)/時刻/surveyor_id は自動付与
+   - 保存先: Supabase responses（失敗時は端末に退避して再送）
+   ---- 下の2値に Supabase の値を入れてください ----
    ========================================================== */
-const APP_VERSION = "trial-0.3-local";
-const LS_KEY = "bus_feedback_log_v1";
+const SUPABASE_URL      = "";   // 例: https://xxxxxxxx.supabase.co
+const SUPABASE_ANON_KEY = "";   // 公開してよい anon public key
+const APP_VERSION = "phaseA-0.1";
 
-const session = { route_id:"", busstop_id:"", vehicle_id:"", respondent_type:"staff" };
+/* 軌跡サンプリング設定 */
+const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
+const WINDOW_MS = 40000;  // 1回答あたりの軌跡ウィンドウ(約40秒)
+const POST_SUBMIT_MIN_MS = 8000; // 送信後に最低これだけ測位を続ける
+const WINDOW_MAX_MS = 60000;
+const OUTBOX_KEY = "bus_outbox_v1";
 
-/* 端末内保存（サンドボックス等で使えない場合はメモリのみにフォールバック） */
-function loadLog(){ try{ const r=localStorage.getItem(LS_KEY); if(r) return JSON.parse(r); }catch(e){} return []; }
-function persist(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(logEntries)); }catch(e){} }
-let logEntries = loadLog(); // 新しい順
+const configured = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
+let sb = null, user = null;
+if (configured) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth:{ persistSession:true, autoRefreshToken:true, detectSessionInUrl:true, flowType:'pkce' }
+});
 
+const $ = (id)=>document.getElementById(id);
+const main = $("main");
 let lang = "ja";
+let pending = null;         // 回答中レコード
+let finalizeTimer = null;   // 送信後の確定タイマー
+let countdownTimer = null;
+const logEntries = [];      // 画面表示用(新しい順)
+
+/* ---------------- i18n ---------------- */
 const T = {
   ja:{
-    pick:"混雑度を選択", records:"記録", items:"件", none:"まだ記録がありません", export:"⬇ CSV",
+    login_title:"バス混雑度 計測", login_desc:"NAIST共同研究の教師データ収集です。GitHubアカウントでログインしてください（初回のみ）。押すのはクラスと人数だけ。位置と時刻は自動で記録されます。",
+    login_btn:"GitHubでログイン", login_wait:"ログイン処理中…",
+    pick:"混雑度を選択", records:"記録", none:"まだ記録がありません",
     classes:[
       {lbl:"ガラガラ", rng:"0〜5人"},{lbl:"やや空き", rng:"6〜15人"},{lbl:"席が埋まる", rng:"16〜25人"},
       {lbl:"立ち客", rng:"26〜40人"},{lbl:"混雑", rng:"41〜55人"},{lbl:"満員近い", rng:"56人〜"},
     ],
     countTitle:"正確な人数（任意）", countHint:"数えられれば入力してください",
     send:"この人数で送信", skip:"人数はスキップ", ppl:"人",
-    saved:"記録しました", exported:"CSVを書き出しました", noData:"記録がありません",
-    cleared:"記録を削除しました", confirmClear:"端末内の全記録を削除します。CSVを書き出し済みですか？",
-    set:"調査設定", route:"路線 (route_id)", stop:"バス停 / 区間 (busstop_id)", veh:"車両番号 (vehicle_id)", type:"回答者 (respondent_type)", save:"保存", clear:"全記録を削除",
-    gpsOn:"位置情報を取得中…", gpsOk:"位置情報 取得", gpsNo:"位置情報なし",
-    hint:"端末内に保存中（会員登録なし）", langLabel:"EN",
-    sess:(s)=>`路線 <b>${s.route_id||"—"}</b> / 区間 <b>${s.busstop_id||"—"}</b> · 車両 <b>${s.vehicle_id||"—"}</b> · <b>${s.respondent_type}</b>`,
+    saved:"保存しました", queued:"端末に保存（後で自動送信）", finishing:"軌跡を記録中",
+    saveNow:"今すぐ保存", recording:"記録中", pendingN:(n)=>`未送信 ${n}件`,
+    gpsOn:"位置情報 取得中…", gpsOk:"位置情報 OK", gpsNo:"位置情報が取得できません（許可が必要）",
+    who:(h)=>`調査員 <b>${h}</b>`, langLabel:"EN",
+    notconf:"バックエンド未設定（管理者に連絡）",
   },
   en:{
-    pick:"Select crowding", records:"Records", items:"", none:"No records yet", export:"⬇ CSV",
+    login_title:"Bus crowding logger", login_desc:"HITL data collection for the NAIST study. Sign in with GitHub (first time only). You only tap class and count; location and time are recorded automatically.",
+    login_btn:"Sign in with GitHub", login_wait:"Signing in…",
+    pick:"Select crowding", records:"Records", none:"No records yet",
     classes:[
       {lbl:"Empty", rng:"0–5"},{lbl:"Light", rng:"6–15"},{lbl:"Seats full", rng:"16–25"},
       {lbl:"Standing", rng:"26–40"},{lbl:"Crowded", rng:"41–55"},{lbl:"Packed", rng:"56+"},
     ],
     countTitle:"Exact count (optional)", countHint:"Enter it if you can count",
     send:"Submit count", skip:"Skip count", ppl:"",
-    saved:"Saved", exported:"CSV exported", noData:"No records",
-    cleared:"Records cleared", confirmClear:"Delete all records on this device. Did you export the CSV first?",
-    set:"Survey settings", route:"Route (route_id)", stop:"Stop / segment (busstop_id)", veh:"Vehicle (vehicle_id)", type:"Respondent (respondent_type)", save:"Save", clear:"Delete all records",
-    gpsOn:"Getting location…", gpsOk:"Location captured", gpsNo:"No location",
-    hint:"Saved on this device (no sign-up)", langLabel:"日本語",
-    sess:(s)=>`Route <b>${s.route_id||"—"}</b> / Seg <b>${s.busstop_id||"—"}</b> · Veh <b>${s.vehicle_id||"—"}</b> · <b>${s.respondent_type}</b>`,
+    saved:"Saved", queued:"Saved on device (will auto-send)", finishing:"Recording trajectory",
+    saveNow:"Save now", recording:"recording", pendingN:(n)=>`${n} unsent`,
+    gpsOn:"Getting location…", gpsOk:"Location OK", gpsNo:"No location (permission needed)",
+    who:(h)=>`Surveyor <b>${h}</b>`, langLabel:"日本語",
+    notconf:"Backend not configured (contact admin)",
   }
 };
 
-const $ = (id)=>document.getElementById(id);
-const main = $("main");
-let pending = null;
-
-function setStatus(msg){ $("status").textContent = msg || T[lang].hint; }
-function toast(msg, color){ const el=$("toast"); el.textContent=msg; el.style.background=color||"#16a34a"; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"),1400); }
-function refreshChrome(){
-  $("sess").innerHTML = T[lang].sess(session);
-  $("langBtn").textContent = T[lang].langLabel;
-  $("setTitle").textContent = T[lang].set;
-  $("lblRoute").textContent = T[lang].route; $("lblStop").textContent = T[lang].stop;
-  $("lblVeh").textContent = T[lang].veh; $("lblType").textContent = T[lang].type;
-  $("setSave").textContent = T[lang].save; $("clearBtn").textContent = T[lang].clear;
-  setStatus();
-}
+/* ---------------- helpers ---------------- */
+function toast(msg,color){ const el=$("toast"); el.textContent=msg; el.style.background=color||"#16a34a"; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"),1500); }
 function hhmm(iso){ const d=new Date(iso); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
+function nowSec(){ return Math.floor(Date.now()/1000); }
+function handleName(){
+  if(!user) return "—";
+  const m=user.user_metadata||{};
+  return m.user_name || m.preferred_username || m.name || (user.email||"").split("@")[0] || user.id.slice(0,8);
+}
+function setStatus(msg,warn){
+  const s=$("status"); const n=outbox().length;
+  let base = msg||"";
+  if(n>0) base = (base?base+" · ":"") + T[lang].pendingN(n);
+  s.textContent = base;
+  s.className = "statusbar" + (warn?" warn":"");
+}
 
-function renderMain(){
-  const t = T[lang];
-  let cards = "";
-  t.classes.forEach((c,i)=>{
-    cards += `<button class="card c${i+1}" onclick="pickClass(${i+1})"><div class="num">${i+1}</div><div class="lbl">${c.lbl}</div><div class="rng">${c.rng}</div></button>`;
-  });
-  let rows = "";
-  if(logEntries.length===0){ rows = `<div class="empty">${t.none}</div>`; }
-  else {
-    logEntries.forEach(e=>{
-      const cls = t.classes[e.congestion_class-1];
-      const countTxt = (e.exact_count!==null) ? `${e.exact_count}${t.ppl}` : `<span style="color:var(--muted)">${cls.lbl}</span>`;
-      const sub = [e.route_id, e.busstop_id, e.vehicle_id].filter(Boolean).join(" · ") || "—";
-      const gps = (e.lat!==null) ? "GPS✓" : "GPS—";
-      rows += `<div class="logrow">
-        <span class="chip c${e.congestion_class}">${e.congestion_class}</span>
-        <span class="lt">${hhmm(e.answered_at)}</span>
-        <span class="lmid"><div class="lcount">${countTxt}</div><div class="lsub">${sub}</div></span>
-        <span class="lgps">${gps}</span>
-      </div>`;
-    });
+/* ---------------- outbox (端末退避＆再送) ---------------- */
+function outbox(){ try{ return JSON.parse(localStorage.getItem(OUTBOX_KEY)||"[]"); }catch(e){ return []; } }
+function saveOutbox(a){ try{ localStorage.setItem(OUTBOX_KEY, JSON.stringify(a)); }catch(e){} }
+function outboxUpsert(item){ const a=outbox(); const i=a.findIndex(x=>x.cid===item.cid); if(i>=0)a[i]=item; else a.push(item); saveOutbox(a); }
+function outboxRemove(cid){ saveOutbox(outbox().filter(x=>x.cid!==cid)); }
+
+async function insertRecord(rec){
+  // rec: {answered_at, congestion_class, exact_count, trajectory, lang, app_version}
+  const { error } = await sb.from("responses").insert(rec);
+  if(error) throw error;
+}
+async function flushOutbox(){
+  if(!user) return;
+  for(const item of outbox().filter(x=>x.ready)){
+    try{ await insertRecord(item.rec); outboxRemove(item.cid);
+      const e=logEntries.find(x=>x.cid===item.cid); if(e){ e.state="ok"; }
+    }catch(err){ /* keep for next time */ }
   }
-  main.innerHTML = `
-    <div class="picker"><p class="ptitle">${t.pick}</p><div class="grid">${cards}</div></div>
-    <div class="log">
-      <div class="lhead"><span>${t.records} ${logEntries.length}${t.items}</span><button class="lexport" onclick="exportCsv()">${t.export}</button></div>
-      ${rows}
-    </div>`;
-  setStatus();
+  renderMain(); setStatus();
 }
 
-function pickClass(cls){
-  pending = { congestion_class:cls, exact_count:null, lat:null, lng:null, gps_accuracy:null, answered_at:new Date().toISOString() };
-  captureGps(()=>renderCount());
-}
-function captureGps(done){
+/* ---------------- GPS 軌跡サンプリング ---------------- */
+let watchId=null, lastSampleTs=0, geoOk=false;
+function startSampling(){
+  if(watchId!=null) return;
+  if(!navigator.geolocation){ setStatus(T[lang].gpsNo,true); return; }
   setStatus(T[lang].gpsOn);
-  if(!navigator.geolocation){ setStatus(T[lang].gpsNo); done(); return; }
-  navigator.geolocation.getCurrentPosition(
-    (p)=>{ pending.lat=p.coords.latitude; pending.lng=p.coords.longitude; pending.gps_accuracy=p.coords.accuracy; setStatus(T[lang].gpsOk); done(); },
-    ()=>{ setStatus(T[lang].gpsNo); done(); },
-    { enableHighAccuracy:true, timeout:8000, maximumAge:3000 }
+  watchId = navigator.geolocation.watchPosition(
+    (p)=>{
+      geoOk=true;
+      const now=Date.now();
+      if(now-lastSampleTs < SAMPLE_MS-300) return;   // 約2.5秒間隔に間引き
+      lastSampleTs=now;
+      if(pending && pending.trajectory){
+        pending.trajectory.push({ t:nowSec(), lat:+p.coords.latitude.toFixed(6), lng:+p.coords.longitude.toFixed(6), acc:Math.round(p.coords.accuracy) });
+        // 進行中レコードをoutboxにも反映(クラッシュ耐性)
+        if(pending.cid) syncPendingToOutbox(false);
+      }
+      setStatus(T[lang].gpsOk);
+    },
+    (e)=>{ setStatus(T[lang].gpsNo,true); },
+    { enableHighAccuracy:true, maximumAge:1000, timeout:8000 }
   );
+}
+function stopSampling(){ if(watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId=null; } }
+
+/* ---------------- 回答フロー ---------------- */
+function pickClass(cls){
+  // 直前の回答が確定待ちなら即確定
+  if(pending) finalizeNow(true);
+  pending = { cid: crypto.randomUUID(), congestion_class:cls, exact_count:null,
+              answered_at:new Date().toISOString(), firstTs:Date.now(), trajectory:[] };
+  startSampling();
+  renderCount();
 }
 
 function renderCount(){
-  const t = T[lang]; let n = 0;
-  const cls = t.classes[pending.congestion_class-1];
+  const t=T[lang], n0=0; let n=n0;
+  const cls=t.classes[pending.congestion_class-1];
   main.innerHTML = `
     <div class="center">
       <div class="selchip"><span class="chip c${pending.congestion_class}">${pending.congestion_class}</span>${cls.lbl}（${cls.rng}）</div>
@@ -232,56 +250,153 @@ function renderCount(){
       <div class="row"><button class="btn primary" id="sendBtn">${t.send}</button></div>
       <div class="row"><button class="btn ghost" id="skipBtn">${t.skip}</button></div>
     </div>`;
-  const cval = $("cval");
-  const show = ()=>{ cval.textContent = n>=70 ? "70+" : n; };
+  const cval=$("cval");
+  const show=()=>{ cval.textContent = n>=70?"70+":n; };
   main.querySelectorAll(".stepper button").forEach(b=>{ b.onclick=()=>{ n=Math.max(0,Math.min(70,n+parseInt(b.dataset.d,10))); show(); }; });
-  $("sendBtn").onclick = ()=>{ pending.exact_count = n; commit(); };
-  $("skipBtn").onclick = ()=>{ pending.exact_count = null; commit(); };
+  $("sendBtn").onclick=()=>{ pending.exact_count=n; submit(); };
+  $("skipBtn").onclick=()=>{ pending.exact_count=null; submit(); };
 }
 
-/* 完了 → 端末内に保存 → ログへ */
-function commit(){
-  const rec = {
-    answered_at: pending.answered_at, respondent_type: session.respondent_type, respondent_id: "",
-    congestion_class: pending.congestion_class, exact_count: pending.exact_count,
-    lat: pending.lat, lng: pending.lng, gps_accuracy: pending.gps_accuracy,
-    route_id: session.route_id, busstop_id: session.busstop_id, vehicle_id: session.vehicle_id,
-    lang: lang, app_version: APP_VERSION,
-  };
-  logEntries.unshift(rec);
-  persist();
+function buildRec(p){
+  return { answered_at:p.answered_at, congestion_class:p.congestion_class,
+           exact_count:p.exact_count, trajectory:p.trajectory,
+           lang:lang, app_version:APP_VERSION };
+}
+function syncPendingToOutbox(ready){
+  if(!pending) return;
+  outboxUpsert({ cid:pending.cid, ready:!!ready, rec:buildRec(pending) });
+}
+
+function submit(){
+  // 画面ログに「記録中」で追加
+  const entry={ cid:pending.cid, congestion_class:pending.congestion_class,
+                exact_count:pending.exact_count, answered_at:pending.answered_at, state:"rec" };
+  logEntries.unshift(entry);
+  syncPendingToOutbox(false);   // 未確定として退避(クラッシュ耐性)
+  // 送信後もしばらく測位を続け、ウィンドウ到達で確定
+  const now=Date.now();
+  let target = pending.firstTs + WINDOW_MS;
+  target = Math.max(target, now + POST_SUBMIT_MIN_MS);
+  target = Math.min(target, pending.firstTs + WINDOW_MAX_MS);
+  pending.finalizeAt = target;
   renderMain();
-  toast(T[lang].saved);
+  startCountdown();
+  finalizeTimer = setTimeout(()=>finalizeNow(false), Math.max(0, target-now));
 }
 
-/* CSV書き出し */
-const CSV_COLS = ["answered_at","respondent_type","respondent_id","congestion_class","exact_count","lat","lng","gps_accuracy","route_id","busstop_id","vehicle_id","lang","app_version"];
-function csvCell(v){ if(v===null||v===undefined) return ""; const s=String(v); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; }
-function exportCsv(){
-  const t = T[lang];
-  if(logEntries.length===0){ toast(t.noData, "#dc2626"); return; }
-  const rows = logEntries.slice().reverse(); // 古い順で書き出し
-  const csv = [CSV_COLS.join(",")].concat(rows.map(e=>CSV_COLS.map(c=>csvCell(e[c])).join(","))).join("\n");
-  const blob = new Blob(["\ufeff"+csv], {type:"text/csv;charset=utf-8;"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
-  const veh = (session.vehicle_id||"veh").replace(/[^\w一-龠ぁ-んァ-ヶ]/g,"");
-  a.href=url; a.download=`bus_feedback_${veh}_${stamp}.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toast(t.exported);
+function startCountdown(){
+  clearInterval(countdownTimer);
+  countdownTimer = setInterval(()=>{
+    if(!pending){ clearInterval(countdownTimer); return; }
+    const remain=Math.max(0,Math.ceil((pending.finalizeAt-Date.now())/1000));
+    const e=logEntries.find(x=>x.cid===pending.cid);
+    if(e){ e.remain=remain; e.npts=pending.trajectory.length; renderMain(); }
+    if(remain<=0){ clearInterval(countdownTimer); }
+  }, 1000);
 }
 
-/* 設定 */
-$("setBtn").onclick = ()=>{ $("fRoute").value=session.route_id; $("fStop").value=session.busstop_id; $("fVeh").value=session.vehicle_id; $("fType").value=session.respondent_type; $("sheet").classList.add("open"); };
-$("sheet").onclick = (e)=>{ if(e.target.id==="sheet") $("sheet").classList.remove("open"); };
-$("setSave").onclick = ()=>{ session.route_id=$("fRoute").value.trim(); session.busstop_id=$("fStop").value.trim(); session.vehicle_id=$("fVeh").value.trim(); session.respondent_type=$("fType").value; $("sheet").classList.remove("open"); refreshChrome(); renderMain(); };
-$("clearBtn").onclick = ()=>{ if(confirm(T[lang].confirmClear)){ logEntries.length=0; persist(); $("sheet").classList.remove("open"); renderMain(); toast(T[lang].cleared, "#dc2626"); } };
-$("langBtn").onclick = ()=>{ lang=(lang==="ja")?"en":"ja"; refreshChrome(); renderMain(); };
+async function finalizeNow(immediate){
+  if(!pending) return;
+  clearTimeout(finalizeTimer); finalizeTimer=null;
+  clearInterval(countdownTimer);
+  const p=pending; pending=null;
+  const rec=buildRec(p);
+  const entry=logEntries.find(x=>x.cid===p.cid);
+  // 送信試行
+  let ok=false;
+  if(user){
+    try{ await insertRecord(rec); ok=true; outboxRemove(p.cid); }
+    catch(err){ ok=false; }
+  }
+  if(!ok){ outboxUpsert({ cid:p.cid, ready:true, rec }); }
+  if(entry){ entry.state = ok?"ok":"pend"; entry.npts=p.trajectory.length; delete entry.remain; }
+  renderMain(); setStatus();
+  toast(ok?T[lang].saved:T[lang].queued, ok?"#16a34a":"#f59e0b");
+  // 次の測位は次のpickClassで開始。バッテリのため停止。
+  stopSampling();
+}
 
-refreshChrome();
-renderMain();
+/* ---------------- 画面描画 ---------------- */
+function renderMain(){
+  const t=T[lang];
+  $("hdr").style.display="";
+  $("sess").innerHTML=t.who(handleName());
+  $("langBtn").textContent=t.langLabel;
+  let cards="";
+  t.classes.forEach((c,i)=>{ cards+=`<button class="card c${i+1}" onclick="pickClass(${i+1})"><div class="num">${i+1}</div><div class="lbl">${c.lbl}</div><div class="rng">${c.rng}</div></button>`; });
+  let rows="";
+  if(logEntries.length===0){ rows=`<div class="empty">${t.none}</div>`; }
+  else{
+    logEntries.forEach(e=>{
+      const cls=t.classes[e.congestion_class-1];
+      const countTxt=(e.exact_count!=null)?`${e.exact_count}${t.ppl}`:`<span style="color:var(--muted)">${cls.lbl}</span>`;
+      let st="", stc="";
+      if(e.state==="rec"){ stc="rec"; st=`${t.recording} ${e.remain!=null?e.remain+"s":""}<br>${(e.npts||0)}pt`; }
+      else if(e.state==="ok"){ stc="ok"; st=`✓ ${(e.npts||0)}pt`; }
+      else if(e.state==="pend"){ stc="pend"; st=`⧗ ${(e.npts||0)}pt`; }
+      rows+=`<div class="logrow">
+        <span class="chip c${e.congestion_class}">${e.congestion_class}</span>
+        <span class="lt">${hhmm(e.answered_at)}</span>
+        <span class="lmid"><div class="lcount">${countTxt}</div><div class="lsub">${cls.lbl}</div></span>
+        <span class="lstat ${stc}">${st}</span>
+      </div>`;
+    });
+  }
+  const saveNowBtn = (pending)?`<button class="iconbtn" onclick="finalizeNow(true)">${t.saveNow}</button>`:``;
+  main.innerHTML = `
+    <div class="picker"><p class="ptitle">${t.pick}</p><div class="grid">${cards}</div></div>
+    <div class="log">
+      <div class="lhead"><span>${t.records} ${logEntries.length}</span>${saveNowBtn}</div>
+      ${rows}
+    </div>`;
+  setStatus();
+}
+
+/* ---------------- 認証 ---------------- */
+function renderLogin(waiting){
+  const t=T[lang];
+  $("hdr").style.display="none";
+  main.innerHTML=`
+    <div class="login">
+      <h1>${t.login_title}</h1>
+      <p>${t.login_desc}</p>
+      <button class="btn gh" id="ghBtn" ${waiting?"disabled":""}>
+        <svg width="20" height="20" viewBox="0 0 16 16" fill="#fff"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
+        ${waiting?t.login_wait:t.login_btn}
+      </button>
+      <p class="hint" id="loginNote" style="color:var(--muted);font-size:12px"></p>
+    </div>`;
+  const btn=$("ghBtn");
+  if(btn) btn.onclick=async()=>{
+    if(!configured){ toast(T[lang].notconf,"#dc2626"); return; }
+    renderLogin(true);
+    const { error } = await sb.auth.signInWithOAuth({ provider:'github',
+      options:{ redirectTo: location.origin+location.pathname } });
+    if(error){ $("loginNote").textContent=error.message; renderLogin(false); }
+  };
+  setStatus(configured?"":T[lang].notconf, !configured);
+}
+
+async function boot(){
+  $("langBtn").onclick=()=>{ lang=(lang==="ja")?"en":"ja"; if(user) renderMain(); else renderLogin(false); };
+  $("outBtn").onclick=async()=>{ if(sb){ await sb.auth.signOut(); } user=null; renderLogin(false); };
+
+  if(!configured){ renderLogin(false); return; }
+
+  const { data:{ session } } = await sb.auth.getSession();
+  user = session ? session.user : null;
+  sb.auth.onAuthStateChange((_ev, sess)=>{
+    user = sess ? sess.user : null;
+    if(user){ renderMain(); flushOutbox(); } else { renderLogin(false); }
+  });
+
+  if(user){ renderMain(); flushOutbox(); }
+  else { renderLogin(false); }
+
+  // アプリ復帰時に未送信を再送
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && user) flushOutbox(); });
+}
+boot();
 </script>
 </body>
 </html>
