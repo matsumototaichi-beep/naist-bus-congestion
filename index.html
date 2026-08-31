@@ -110,7 +110,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-0.3";
+const APP_VERSION = "phaseA-0.4";
 
 /* 軌跡サンプリング設定 */
 const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
@@ -238,7 +238,10 @@ function startSampling(){
       if(now-lastSampleTs < SAMPLE_MS-300) return;   // 約2.5秒間隔に間引き
       lastSampleTs=now;
       if(pending && pending.trajectory){
-        pending.trajectory.push({ t:nowSec(), lat:+p.coords.latitude.toFixed(6), lng:+p.coords.longitude.toFixed(6), acc:Math.round(p.coords.accuracy) });
+        const c=p.coords;
+        const hdg=(c.heading!=null && !isNaN(c.heading)) ? Math.round(c.heading) : null;   // 進行方位(度)
+        const spd=(c.speed!=null && !isNaN(c.speed)) ? +c.speed.toFixed(1) : null;          // 速度(m/s)
+        pending.trajectory.push({ t:nowSec(), lat:+c.latitude.toFixed(6), lng:+c.longitude.toFixed(6), acc:Math.round(c.accuracy), hdg:hdg, spd:spd });
         // 進行中レコードをoutboxにも反映(クラッシュ耐性)
         if(pending.cid) syncPendingToOutbox(false);
       }
