@@ -76,6 +76,13 @@
   .login h1{font-size:22px; margin:0;}
   .login p{color:var(--muted); font-size:14px; margin:0; max-width:340px; line-height:1.5;}
   .login .btn{flex:0 0 auto; width:100%; max-width:320px;}
+  .authtabs{display:flex; gap:6px; width:100%; max-width:320px;}
+  .atab{flex:1; border:1px solid var(--line); background:transparent; color:var(--muted); border-radius:11px; padding:10px; font-size:14px; font-weight:700; font-family:inherit;}
+  .atab.on{background:var(--panel); color:var(--ink); border-color:#2563eb;}
+  .authform{display:flex; flex-direction:column; gap:10px; width:100%; max-width:320px;}
+  .afield{width:100%; padding:13px; border-radius:11px; border:1px solid var(--line); background:var(--panel); color:var(--ink); font-size:16px; font-family:inherit;}
+  .authform .btn{max-width:none;}
+  #authNote{color:#fca5a5; font-size:12px; min-height:16px; margin:0;}
 </style>
 </head>
 <body>
@@ -103,7 +110,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-0.1";
+const APP_VERSION = "phaseA-0.2";
 
 /* 軌跡サンプリング設定 */
 const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
@@ -129,8 +136,17 @@ const logEntries = [];      // 画面表示用(新しい順)
 /* ---------------- i18n ---------------- */
 const T = {
   ja:{
-    login_title:"バス混雑度 計測", login_desc:"NAIST共同研究の教師データ収集です。GitHubアカウントでログインしてください（初回のみ）。押すのはクラスと人数だけ。位置と時刻は自動で記録されます。",
-    login_btn:"GitHubでログイン", login_wait:"ログイン処理中…",
+    auth_title:"バス混雑度 計測",
+    auth_intro:"NAIST共同研究の教師データ収集です。メールアドレスで登録／ログインしてください。回答はクラスと人数だけ、位置と時刻は自動で記録されます。",
+    tab_login:"ログイン", tab_signup:"新規登録",
+    ph_name:"表示名（調査員名）", ph_email:"メールアドレス", ph_pass:"パスワード（8文字以上）",
+    do_login:"ログイン", do_signup:"登録して確認メールを送る", signing:"処理中…",
+    sent_title:"確認メールを送信しました",
+    sent_desc:(e)=>`${e} 宛に確認メールを送りました。<b>同じ端末のこのブラウザ</b>でメール内のリンクを開くと、ここに戻って自動でログインします。`,
+    resend:"確認メールを再送", to_login:"ログインへ戻る", resent:"再送しました",
+    err_login:"メールまたはパスワードが違います", err_unconfirmed:"メール確認が未完了です。受信した確認メールのリンクを開いてください。",
+    err_pass:"パスワードは8文字以上にしてください", err_email:"メールアドレスを入力してください", err_name:"表示名を入力してください",
+    login_wait:"処理中…",
     pick:"混雑度を選択", records:"記録", none:"まだ記録がありません",
     classes:[
       {lbl:"ガラガラ", rng:"0〜5人"},{lbl:"やや空き", rng:"6〜15人"},{lbl:"席が埋まる", rng:"16〜25人"},
@@ -145,8 +161,17 @@ const T = {
     notconf:"バックエンド未設定（管理者に連絡）",
   },
   en:{
-    login_title:"Bus crowding logger", login_desc:"HITL data collection for the NAIST study. Sign in with GitHub (first time only). You only tap class and count; location and time are recorded automatically.",
-    login_btn:"Sign in with GitHub", login_wait:"Signing in…",
+    auth_title:"Bus crowding logger",
+    auth_intro:"HITL data collection for the NAIST study. Register / sign in with your email. You only tap class and count; location and time are recorded automatically.",
+    tab_login:"Sign in", tab_signup:"Sign up",
+    ph_name:"Display name (surveyor)", ph_email:"Email", ph_pass:"Password (8+ chars)",
+    do_login:"Sign in", do_signup:"Sign up & send confirmation", signing:"Working…",
+    sent_title:"Confirmation email sent",
+    sent_desc:(e)=>`We sent a confirmation email to ${e}. Open the link <b>in this same browser</b> and you'll return here signed in.`,
+    resend:"Resend confirmation", to_login:"Back to sign in", resent:"Resent",
+    err_login:"Wrong email or password", err_unconfirmed:"Email not confirmed yet. Open the link in the confirmation email.",
+    err_pass:"Password must be at least 8 characters", err_email:"Enter your email", err_name:"Enter a display name",
+    login_wait:"Working…",
     pick:"Select crowding", records:"Records", none:"No records yet",
     classes:[
       {lbl:"Empty", rng:"0–5"},{lbl:"Light", rng:"6–15"},{lbl:"Seats full", rng:"16–25"},
@@ -169,7 +194,7 @@ function nowSec(){ return Math.floor(Date.now()/1000); }
 function handleName(){
   if(!user) return "—";
   const m=user.user_metadata||{};
-  return m.user_name || m.preferred_username || m.name || (user.email||"").split("@")[0] || user.id.slice(0,8);
+  return m.display_name || m.name || (user.email||"").split("@")[0] || user.id.slice(0,8);
 }
 function setStatus(msg,warn){
   const s=$("status"); const n=outbox().length;
@@ -352,46 +377,105 @@ function renderMain(){
   setStatus();
 }
 
-/* ---------------- 認証 ---------------- */
-function renderLogin(waiting){
+/* ---------------- 認証（メール＋パスワード） ---------------- */
+let authMode = "login";   // login | signup | sent
+let authForm = { email:"", pass:"", name:"", sentEmail:"" };
+
+function renderAuth(){
   const t=T[lang];
   $("hdr").style.display="none";
+  if(authMode==="sent"){
+    main.innerHTML=`
+      <div class="login">
+        <h1>${t.sent_title}</h1>
+        <p>${t.sent_desc(authForm.sentEmail)}</p>
+        <button class="btn ghost" id="resendBtn">${t.resend}</button>
+        <button class="btn ghost" id="backBtn">${t.to_login}</button>
+      </div>`;
+    $("resendBtn").onclick=async()=>{
+      try{ await sb.auth.resend({ type:'signup', email:authForm.sentEmail,
+            options:{ emailRedirectTo: location.origin+location.pathname } });
+        toast(t.resent); }catch(e){ toast(e.message||"error","#dc2626"); }
+    };
+    $("backBtn").onclick=()=>{ authMode="login"; renderAuth(); };
+    setStatus(configured?"":T[lang].notconf, !configured);
+    return;
+  }
+  const isSignup = authMode==="signup";
   main.innerHTML=`
     <div class="login">
-      <h1>${t.login_title}</h1>
-      <p>${t.login_desc}</p>
-      <button class="btn gh" id="ghBtn" ${waiting?"disabled":""}>
-        <svg width="20" height="20" viewBox="0 0 16 16" fill="#fff"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"></path></svg>
-        ${waiting?t.login_wait:t.login_btn}
-      </button>
-      <p class="hint" id="loginNote" style="color:var(--muted);font-size:12px"></p>
+      <h1>${t.auth_title}</h1>
+      <p>${t.auth_intro}</p>
+      <div class="authtabs">
+        <button class="atab ${!isSignup?'on':''}" id="tabLogin">${t.tab_login}</button>
+        <button class="atab ${isSignup?'on':''}" id="tabSignup">${t.tab_signup}</button>
+      </div>
+      <div class="authform">
+        ${isSignup?`<input class="afield" id="fName" type="text" placeholder="${t.ph_name}" autocomplete="name" value="${authForm.name||''}">`:``}
+        <input class="afield" id="fEmail" type="email" inputmode="email" autocapitalize="none" autocomplete="email" placeholder="${t.ph_email}" value="${authForm.email||''}">
+        <input class="afield" id="fPass" type="password" autocomplete="${isSignup?'new-password':'current-password'}" placeholder="${t.ph_pass}" value="${authForm.pass||''}">
+        <button class="btn primary" id="authBtn">${isSignup?t.do_signup:t.do_login}</button>
+        <p class="hint" id="authNote"></p>
+      </div>
     </div>`;
-  const btn=$("ghBtn");
-  if(btn) btn.onclick=async()=>{
-    if(!configured){ toast(T[lang].notconf,"#dc2626"); return; }
-    renderLogin(true);
-    const { error } = await sb.auth.signInWithOAuth({ provider:'github',
-      options:{ redirectTo: location.origin+location.pathname } });
-    if(error){ $("loginNote").textContent=error.message; renderLogin(false); }
-  };
+  $("tabLogin").onclick=()=>{ grabAuth(); authMode="login"; renderAuth(); };
+  $("tabSignup").onclick=()=>{ grabAuth(); authMode="signup"; renderAuth(); };
+  $("authBtn").onclick=submitAuth;
   setStatus(configured?"":T[lang].notconf, !configured);
+}
+function grabAuth(){
+  if($("fEmail")) authForm.email=$("fEmail").value.trim();
+  if($("fPass"))  authForm.pass=$("fPass").value;
+  if($("fName"))  authForm.name=$("fName").value.trim();
+}
+function authNote(msg){ const n=$("authNote"); if(n) n.textContent=msg||""; }
+async function submitAuth(){
+  const t=T[lang];
+  if(!configured){ toast(t.notconf,"#dc2626"); return; }
+  grabAuth();
+  const email=authForm.email, pass=authForm.pass;
+  if(!email){ authNote(t.err_email); return; }
+  if(!pass || pass.length<8){ authNote(t.err_pass); return; }
+  const btn=$("authBtn"); if(btn){ btn.disabled=true; btn.textContent=t.signing; }
+  try{
+    if(authMode==="signup"){
+      if(!authForm.name){ authNote(t.err_name); return; }
+      const { data, error } = await sb.auth.signUp({ email, password:pass,
+        options:{ emailRedirectTo: location.origin+location.pathname, data:{ display_name:authForm.name } } });
+      if(error) throw error;
+      if(data.session){ /* 確認OFF環境: 即ログイン(onAuthStateChangeが処理) */ }
+      else { authForm.sentEmail=email; authMode="sent"; renderAuth(); return; }
+    } else {
+      const { error } = await sb.auth.signInWithPassword({ email, password:pass });
+      if(error){
+        const m=(error.message||"").toLowerCase();
+        if(m.includes("not confirmed")||m.includes("confirm")) authNote(t.err_unconfirmed);
+        else authNote(t.err_login);
+        throw error;
+      }
+    }
+  }catch(e){
+    if(!$("authNote")||!$("authNote").textContent) authNote(e.message||"error");
+  }finally{
+    const b=$("authBtn"); if(b){ b.disabled=false; b.textContent=(authMode==="signup")?t.do_signup:t.do_login; }
+  }
 }
 
 async function boot(){
-  $("langBtn").onclick=()=>{ lang=(lang==="ja")?"en":"ja"; if(user) renderMain(); else renderLogin(false); };
-  $("outBtn").onclick=async()=>{ if(sb){ await sb.auth.signOut(); } user=null; renderLogin(false); };
+  $("langBtn").onclick=()=>{ lang=(lang==="ja")?"en":"ja"; if(user) renderMain(); else renderAuth(); };
+  $("outBtn").onclick=async()=>{ if(sb){ await sb.auth.signOut(); } user=null; authMode="login"; renderAuth(); };
 
-  if(!configured){ renderLogin(false); return; }
+  if(!configured){ renderAuth(); return; }
 
   const { data:{ session } } = await sb.auth.getSession();
   user = session ? session.user : null;
   sb.auth.onAuthStateChange((_ev, sess)=>{
     user = sess ? sess.user : null;
-    if(user){ renderMain(); flushOutbox(); } else { renderLogin(false); }
+    if(user){ renderMain(); flushOutbox(); } else { renderAuth(); }
   });
 
   if(user){ renderMain(); flushOutbox(); }
-  else { renderLogin(false); }
+  else { renderAuth(); }
 
   // アプリ復帰時に未送信を再送
   document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && user) flushOutbox(); });
