@@ -110,7 +110,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-0.2";
+const APP_VERSION = "phaseA-0.3";
 
 /* 軌跡サンプリング設定 */
 const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
@@ -367,11 +367,10 @@ function renderMain(){
       </div>`;
     });
   }
-  const saveNowBtn = (pending)?`<button class="iconbtn" onclick="finalizeNow(true)">${t.saveNow}</button>`:``;
   main.innerHTML = `
     <div class="picker"><p class="ptitle">${t.pick}</p><div class="grid">${cards}</div></div>
     <div class="log">
-      <div class="lhead"><span>${t.records} ${logEntries.length}</span>${saveNowBtn}</div>
+      <div class="lhead"><span>${t.records} ${logEntries.length}</span></div>
       ${rows}
     </div>`;
   setStatus();
@@ -477,8 +476,12 @@ async function boot(){
   if(user){ renderMain(); flushOutbox(); }
   else { renderAuth(); }
 
-  // アプリ復帰時に未送信を再送
-  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden && user) flushOutbox(); });
+  // アプリを離れた瞬間に回答中レコードを確定（手動ボタンの代替）／復帰時に未送信を再送
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.hidden){ if(pending) finalizeNow(true); }
+    else if(user){ flushOutbox(); }
+  });
+  window.addEventListener("pagehide", ()=>{ if(pending) finalizeNow(true); });
 }
 boot();
 </script>
