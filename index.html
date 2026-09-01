@@ -140,7 +140,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-0.6";
+const APP_VERSION = "phaseA-0.7";
 
 /* 軌跡サンプリング設定 */
 const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
@@ -197,6 +197,11 @@ const T = {
     feed_all:"すべての混雑度", feed_update:"更新", feed_loading:"読み込み中…",
     feed_empty:"まだ報告がありません", feed_count:(n)=>`${n}件を表示中`,
     staff_tag:"スタッフ", feed_err:"読み込みに失敗しました",
+    feed_login:"データ一覧を見るにはログインが必要です。", feed_login_btn:"ログインへ",
+    forgot:"パスワードを忘れた方",
+    reset_title:"パスワード再設定", reset_desc:"登録したメールアドレスに、再設定用リンクを送ります。",
+    reset_send:"再設定メールを送る", reset_sent:"再設定メールを送信しました。同じ端末のこのブラウザでメール内のリンクを開いてください。",
+    newpass_title:"新しいパスワードを設定", newpass_ph:"新しいパスワード（8文字以上）", newpass_save:"更新する", newpass_done:"パスワードを更新しました",
   },
   en:{
     auth_title:"Bus crowding logger",
@@ -227,6 +232,11 @@ const T = {
     feed_all:"All levels", feed_update:"Refresh", feed_loading:"Loading…",
     feed_empty:"No reports yet", feed_count:(n)=>`${n} shown`,
     staff_tag:"Staff", feed_err:"Failed to load",
+    feed_login:"Sign in to view the data.", feed_login_btn:"To sign in",
+    forgot:"Forgot password?",
+    reset_title:"Reset password", reset_desc:"We'll email a reset link to your registered address.",
+    reset_send:"Send reset email", reset_sent:"Reset email sent. Open the link in this same browser.",
+    newpass_title:"Set a new password", newpass_ph:"New password (8+ chars)", newpass_save:"Update", newpass_done:"Password updated",
   }
 };
 
@@ -443,13 +453,20 @@ function updateNav(){
 function setView(v){ view=v; render(); }
 function render(){
   updateNav();
-  if(view==="feed"){ renderFeed(); }
-  else { if(user) renderMain(); else renderAuth(); }
+  if(view==="feed"){ renderFeed(); return; }
+  if(user && authMode!=="newpass"){ renderMain(); }   // 通常のログイン中
+  else { renderAuth(); }                               // 未ログイン or パスワード再設定中
 }
 
 /* ---------------- データ一覧（公開ビュー report_feed を表示） ---------------- */
 function renderFeed(){
   const t=T[lang];
+  if(!user){   // データ一覧はログイン必須
+    main.innerHTML=`<div class="login"><h1>${t.feed_title}</h1><p>${t.feed_login}</p>
+      <button class="btn primary" id="toLogin">${t.feed_login_btn}</button></div>`;
+    $("toLogin").onclick=()=>setView("report");
+    setStatus(); return;
+  }
   main.innerHTML=`
     <div class="feed">
       <div class="feedhead">
@@ -519,6 +536,54 @@ function renderAuth(){
     setStatus(configured?"":T[lang].notconf, !configured);
     return;
   }
+  if(authMode==="reset"){   // パスワード再設定メールを送る
+    main.innerHTML=`
+      <div class="login"><h1>${t.reset_title}</h1><p>${t.reset_desc}</p>
+        <div class="authform">
+          <input class="afield" id="fEmail" type="email" inputmode="email" autocapitalize="none" autocomplete="email" placeholder="${t.ph_email}" value="${authForm.email||''}">
+          <button class="btn primary" id="resetBtn">${t.reset_send}</button>
+          <p class="hint" id="authNote"></p>
+        </div>
+        <button class="atab" id="backToLogin" style="border:none">${t.to_login}</button>
+      </div>`;
+    $("resetBtn").onclick=async()=>{
+      const email=($("fEmail").value||"").trim();
+      if(!email){ authNote(t.err_email); return; }
+      authForm.email=email;
+      const b=$("resetBtn"); b.disabled=true; b.textContent=t.signing;
+      try{
+        const { error }=await sb.auth.resetPasswordForEmail(email,{ redirectTo: location.origin+location.pathname });
+        if(error) throw error;
+        main.innerHTML=`<div class="login"><h1>${t.reset_title}</h1><p>${t.reset_sent}</p>
+          <button class="btn ghost" id="backToLogin2">${t.to_login}</button></div>`;
+        $("backToLogin2").onclick=()=>{ authMode="login"; renderAuth(); };
+      }catch(e){ authNote(e.message||"error"); b.disabled=false; b.textContent=t.reset_send; }
+    };
+    $("backToLogin").onclick=()=>{ authMode="login"; renderAuth(); };
+    setStatus(configured?"":t.notconf, !configured);
+    return;
+  }
+  if(authMode==="newpass"){   // メールのリンクから戻ってきた: 新パスワード設定
+    main.innerHTML=`
+      <div class="login"><h1>${t.newpass_title}</h1>
+        <div class="authform">
+          <input class="afield" id="fNewPass" type="password" autocomplete="new-password" placeholder="${t.newpass_ph}">
+          <button class="btn primary" id="npBtn">${t.newpass_save}</button>
+          <p class="hint" id="authNote"></p>
+        </div>
+      </div>`;
+    $("npBtn").onclick=async()=>{
+      const pass=$("fNewPass").value||"";
+      if(pass.length<8){ authNote(t.err_pass); return; }
+      const b=$("npBtn"); b.disabled=true; b.textContent=t.signing;
+      try{
+        const { error }=await sb.auth.updateUser({ password:pass }); if(error) throw error;
+        toast(t.newpass_done); authMode="login"; view="report"; render();   // 既にログイン中→報告画面へ
+      }catch(e){ authNote(e.message||"error"); b.disabled=false; b.textContent=t.newpass_save; }
+    };
+    setStatus();
+    return;
+  }
   const isSignup = authMode==="signup";
   main.innerHTML=`
     <div class="login">
@@ -534,11 +599,13 @@ function renderAuth(){
         <input class="afield" id="fPass" type="password" autocomplete="${isSignup?'new-password':'current-password'}" placeholder="${t.ph_pass}" value="${authForm.pass||''}">
         <button class="btn primary" id="authBtn">${isSignup?t.do_signup:t.do_login}</button>
         <p class="hint" id="authNote"></p>
+        ${!isSignup?`<button class="atab" id="forgotBtn" style="border:none;color:var(--muted);font-weight:600">${t.forgot}</button>`:``}
       </div>
     </div>`;
   $("tabLogin").onclick=()=>{ grabAuth(); authMode="login"; renderAuth(); };
   $("tabSignup").onclick=()=>{ grabAuth(); authMode="signup"; renderAuth(); };
   $("authBtn").onclick=submitAuth;
+  if($("forgotBtn")) $("forgotBtn").onclick=()=>{ grabAuth(); authMode="reset"; renderAuth(); };
   setStatus(configured?"":T[lang].notconf, !configured);
 }
 function grabAuth(){
@@ -589,8 +656,9 @@ async function boot(){
 
   const { data:{ session } } = await sb.auth.getSession();
   user = session ? session.user : null;
-  sb.auth.onAuthStateChange((_ev, sess)=>{
+  sb.auth.onAuthStateChange((ev, sess)=>{
     user = sess ? sess.user : null;
+    if(ev==="PASSWORD_RECOVERY"){ authMode="newpass"; view="report"; render(); return; }  // 再設定リンクから復帰
     render(); if(user) flushOutbox();
   });
 

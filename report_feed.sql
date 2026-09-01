@@ -15,10 +15,11 @@ create or replace view public.report_feed as
     app_version
   from public.responses;
 
--- 匿名(未ログイン)・ログイン済みの双方から閲覧可に
--- （ビューは所有者権限で実行されるため、responses のRLSは通さずに
+-- ログイン済みユーザーのみ閲覧可（未ログインの匿名からは読めない）
+-- （ビューは所有者権限で実行されるため responses のRLSは通さず、
 --   ここで許可した安全な列だけが読める。生データ本体は本人のみのまま）
-grant select on public.report_feed to anon, authenticated;
+revoke select on public.report_feed from anon;      -- 匿名は不可
+grant  select on public.report_feed to authenticated;
 
 -- 反映されない場合は PostgREST にスキーマ再読込を通知
 notify pgrst, 'reload schema';
