@@ -110,13 +110,14 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-0.4";
+const APP_VERSION = "phaseA-0.5";
 
 /* 軌跡サンプリング設定 */
 const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
-const WINDOW_MS = 40000;  // 1回答あたりの軌跡ウィンドウ(約40秒)
-const POST_SUBMIT_MIN_MS = 8000; // 送信後に最低これだけ測位を続ける
-const WINDOW_MAX_MS = 60000;
+const WINDOW_MS = 20000;  // 1回答あたりの軌跡ウィンドウ(約20秒)
+const PRE_MS = 15000;     // クラスタップ“前”の直近測位をこの秒数ぶん取り込む(前倒し)
+const POST_SUBMIT_MIN_MS = 4000; // 送信後に最低これだけ測位を続ける
+const WINDOW_MAX_MS = 30000;
 const OUTBOX_KEY = "bus_outbox_v1";
 
 const configured = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
@@ -129,6 +130,7 @@ const $ = (id)=>document.getElementById(id);
 const main = $("main");
 let lang = "ja";
 let pending = null;         // 回答中レコード
+const preBuffer = [];       // 直近の測位（クラスタップ前の軌跡を前倒しで取り込む用）
 let finalizeTimer = null;   // 送信後の確定タイマー
 let countdownTimer = null;
 const logEntries = [];      // 画面表示用(新しい順)
@@ -237,12 +239,16 @@ function startSampling(){
       const now=Date.now();
       if(now-lastSampleTs < SAMPLE_MS-300) return;   // 約2.5秒間隔に間引き
       lastSampleTs=now;
+      const c=p.coords;
+      const hdg=(c.heading!=null && !isNaN(c.heading)) ? Math.round(c.heading) : null;   // 進行方位(度)
+      const spd=(c.speed!=null && !isNaN(c.speed)) ? +c.speed.toFixed(1) : null;          // 速度(m/s)
+      const pt={ t:nowSec(), lat:+c.latitude.toFixed(6), lng:+c.longitude.toFixed(6), acc:Math.round(c.accuracy), hdg:hdg, spd:spd };
+      // 常時: 直近30秒をpreBufferに保持（前倒し用）
+      preBuffer.push({ ...pt, _ms:now });
+      const cut=now-30000; while(preBuffer.length && preBuffer[0]._ms<cut) preBuffer.shift();
+      // 回答中なら軌跡にも追加
       if(pending && pending.trajectory){
-        const c=p.coords;
-        const hdg=(c.heading!=null && !isNaN(c.heading)) ? Math.round(c.heading) : null;   // 進行方位(度)
-        const spd=(c.speed!=null && !isNaN(c.speed)) ? +c.speed.toFixed(1) : null;          // 速度(m/s)
-        pending.trajectory.push({ t:nowSec(), lat:+c.latitude.toFixed(6), lng:+c.longitude.toFixed(6), acc:Math.round(c.accuracy), hdg:hdg, spd:spd });
-        // 進行中レコードをoutboxにも反映(クラッシュ耐性)
+        pending.trajectory.push(pt);
         if(pending.cid) syncPendingToOutbox(false);
       }
       setStatus(T[lang].gpsOk);
@@ -257,8 +263,12 @@ function stopSampling(){ if(watchId!=null){ navigator.geolocation.clearWatch(wat
 function pickClass(cls){
   // 直前の回答が確定待ちなら即確定
   if(pending) finalizeNow(true);
+  const now=Date.now();
+  // クラスタップ“前”の直近PRE_MS秒の測位を取り込む（前倒し）
+  const seed = preBuffer.filter(p=>p._ms>=now-PRE_MS).map(({_ms,...pt})=>pt);
   pending = { cid: crypto.randomUUID(), congestion_class:cls, exact_count:null,
-              answered_at:new Date().toISOString(), firstTs:Date.now(), trajectory:[] };
+              answered_at:new Date().toISOString(),
+              firstTs: seed.length ? (now-PRE_MS) : now, trajectory: seed };
   startSampling();
   renderCount();
 }
@@ -340,8 +350,7 @@ async function finalizeNow(immediate){
   if(entry){ entry.state = ok?"ok":"pend"; entry.npts=p.trajectory.length; delete entry.remain; }
   renderMain(); setStatus();
   toast(ok?T[lang].saved:T[lang].queued, ok?"#16a34a":"#f59e0b");
-  // 次の測位は次のpickClassで開始。バッテリのため停止。
-  stopSampling();
+  // 測位は止めない（次回の前倒し用にpreBufferを温め続ける。画面を離れた時のみ停止）
 }
 
 /* ---------------- 画面描画 ---------------- */
@@ -377,6 +386,7 @@ function renderMain(){
       ${rows}
     </div>`;
   setStatus();
+  startSampling();   // 一覧表示中は測位を回してpreBufferを温める（前倒し）
 }
 
 /* ---------------- 認証（メール＋パスワード） ---------------- */
@@ -481,8 +491,8 @@ async function boot(){
 
   // アプリを離れた瞬間に回答中レコードを確定（手動ボタンの代替）／復帰時に未送信を再送
   document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden){ if(pending) finalizeNow(true); }
-    else if(user){ flushOutbox(); }
+    if(document.hidden){ if(pending) finalizeNow(true); stopSampling(); }   // 背景化: 確定＆測位停止(電池)
+    else if(user){ startSampling(); flushOutbox(); }                        // 復帰: 測位再開＆再送
   });
   window.addEventListener("pagehide", ()=>{ if(pending) finalizeNow(true); });
 }
