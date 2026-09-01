@@ -97,6 +97,7 @@
   /* login screen */
   .login{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px; text-align:center;}
   .login h1{font-size:22px; margin:0;}
+  .reseticon{font-size:42px; line-height:1;}
   .login p{color:var(--muted); font-size:14px; margin:0; max-width:340px; line-height:1.5;}
   .login .btn{flex:0 0 auto; width:100%; max-width:320px;}
   .authtabs{display:flex; gap:6px; width:100%; max-width:320px;}
@@ -140,7 +141,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-0.7";
+const APP_VERSION = "phaseA-0.8";
 
 /* 軌跡サンプリング設定 */
 const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
@@ -201,7 +202,9 @@ const T = {
     forgot:"パスワードを忘れた方",
     reset_title:"パスワード再設定", reset_desc:"登録したメールアドレスに、再設定用リンクを送ります。",
     reset_send:"再設定メールを送る", reset_sent:"再設定メールを送信しました。同じ端末のこのブラウザでメール内のリンクを開いてください。",
-    newpass_title:"新しいパスワードを設定", newpass_ph:"新しいパスワード（8文字以上）", newpass_save:"更新する", newpass_done:"パスワードを更新しました",
+    newpass_title:"パスワードの再設定", newpass_desc:"新しいパスワードを入力してください。設定するとそのままログインします（追加の確認メールは届きません）。",
+    newpass_ph:"新しいパスワード（8文字以上）", newpass_save:"パスワードを更新", newpass_done:"パスワードを更新しました",
+    newpass_done_desc:"新しいパスワードでログインしました。", go_app:"アプリへ進む",
   },
   en:{
     auth_title:"Bus crowding logger",
@@ -236,7 +239,9 @@ const T = {
     forgot:"Forgot password?",
     reset_title:"Reset password", reset_desc:"We'll email a reset link to your registered address.",
     reset_send:"Send reset email", reset_sent:"Reset email sent. Open the link in this same browser.",
-    newpass_title:"Set a new password", newpass_ph:"New password (8+ chars)", newpass_save:"Update", newpass_done:"Password updated",
+    newpass_title:"Reset your password", newpass_desc:"Enter a new password. You'll be signed in once it's set (no extra confirmation email).",
+    newpass_ph:"New password (8+ chars)", newpass_save:"Update password", newpass_done:"Password updated",
+    newpass_done_desc:"Signed in with your new password.", go_app:"Go to app",
   }
 };
 
@@ -449,6 +454,10 @@ function updateNav(){
   $("langBtn").textContent=t.langLabel;
   $("sess").innerHTML = (user && view==="report") ? t.who(handleName()) : "";
   $("outBtn").style.display = user ? "" : "none";
+  // パスワード再設定中はナビを隠して画面に集中させる
+  const focus = (view==="report" && (authMode==="reset" || authMode==="newpass"));
+  $("navReport").style.visibility = focus ? "hidden" : "";
+  $("navFeed").style.visibility  = focus ? "hidden" : "";
 }
 function setView(v){ view=v; render(); }
 function render(){
@@ -563,24 +572,33 @@ function renderAuth(){
     setStatus(configured?"":t.notconf, !configured);
     return;
   }
-  if(authMode==="newpass"){   // メールのリンクから戻ってきた: 新パスワード設定
+  if(authMode==="newpass"){   // メールのリンクから戻ってきた: 専用の再設定画面
     main.innerHTML=`
-      <div class="login"><h1>${t.newpass_title}</h1>
+      <div class="login">
+        <div class="reseticon">🔑</div>
+        <h1>${t.newpass_title}</h1>
+        <p>${t.newpass_desc}</p>
         <div class="authform">
           <input class="afield" id="fNewPass" type="password" autocomplete="new-password" placeholder="${t.newpass_ph}">
           <button class="btn primary" id="npBtn">${t.newpass_save}</button>
           <p class="hint" id="authNote"></p>
         </div>
       </div>`;
-    $("npBtn").onclick=async()=>{
+    const submit=async()=>{
       const pass=$("fNewPass").value||"";
       if(pass.length<8){ authNote(t.err_pass); return; }
       const b=$("npBtn"); b.disabled=true; b.textContent=t.signing;
       try{
         const { error }=await sb.auth.updateUser({ password:pass }); if(error) throw error;
-        toast(t.newpass_done); authMode="login"; view="report"; render();   // 既にログイン中→報告画面へ
+        // 成功: 明確な完了画面を出す（トーストだけだと分かりづらいため）
+        main.innerHTML=`<div class="login"><div class="reseticon">✅</div>
+          <h1>${t.newpass_done}</h1><p>${t.newpass_done_desc}</p>
+          <button class="btn primary" id="goApp">${t.go_app}</button></div>`;
+        $("goApp").onclick=()=>{ authMode="login"; view="report"; render(); };
       }catch(e){ authNote(e.message||"error"); b.disabled=false; b.textContent=t.newpass_save; }
     };
+    $("npBtn").onclick=submit;
+    $("fNewPass").addEventListener("keydown",(e)=>{ if(e.key==="Enter") submit(); });
     setStatus();
     return;
   }
@@ -654,16 +672,21 @@ async function boot(){
 
   if(!configured){ render(); return; }
 
-  const { data:{ session } } = await sb.auth.getSession();
-  user = session ? session.user : null;
+  // 再設定リンクから戻ってきた場合を早期検知（URLに type=recovery が付く）
+  if(location.hash.includes("type=recovery") || new URLSearchParams(location.search).get("type")==="recovery"){
+    authMode="newpass"; view="report";
+  }
+  // リスナーは getSession より前に登録（初期URL処理で発火する PASSWORD_RECOVERY を取りこぼさない）
   sb.auth.onAuthStateChange((ev, sess)=>{
     user = sess ? sess.user : null;
     if(ev==="PASSWORD_RECOVERY"){ authMode="newpass"; view="report"; render(); return; }  // 再設定リンクから復帰
     render(); if(user) flushOutbox();
   });
 
+  const { data:{ session } } = await sb.auth.getSession();
+  user = session ? session.user : null;
   render();
-  if(user) flushOutbox();
+  if(user && authMode!=="newpass") flushOutbox();
 
   // アプリを離れた瞬間に回答中レコードを確定（手動ボタンの代替）／復帰時に未送信を再送
   document.addEventListener("visibilitychange", ()=>{
