@@ -102,11 +102,11 @@
 <script>
 /* ==========================================================
    バス混雑度 HITL 収集アプリ (Phase A)
-   - GitHubログイン(Supabase Auth OAuth)
+   - メール＋パスワードで登録/ログイン(Supabase Auth)
    - 回答者が押すのは「クラス＋人数」だけ
-   - 軌跡(2〜3秒間隔・約40秒)/時刻/surveyor_id は自動付与
+   - 軌跡(約2.5秒間隔・回答前後 約20秒／方位・速度も)/時刻/surveyor_id は自動付与
    - 保存先: Supabase responses（失敗時は端末に退避して再送）
-   ---- 下の2値に Supabase の値を入れてください ----
+   ---- 下の SUPABASE_URL / ANON_KEY に自分のプロジェクト値を入れる ----
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
