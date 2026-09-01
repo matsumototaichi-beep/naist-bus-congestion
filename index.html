@@ -15,10 +15,33 @@
     font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
     background:var(--bg); color:var(--ink); display:flex; flex-direction:column; overflow:hidden;
   }
-  header{flex:0 0 auto; padding:8px 12px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line); background:var(--panel);}
-  .sess{flex:1; min-width:0; font-size:12px; color:var(--muted); line-height:1.3;}
+  header{flex:0 0 auto; padding:7px 12px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line); background:var(--panel);}
+  .brand{flex:0 0 auto; font-size:14px; font-weight:800; display:flex; flex-direction:column; line-height:1.15;}
+  .brand .staff{font-size:10px; font-weight:600; color:var(--muted);}
+  .nav{flex:1; display:flex; gap:4px; justify-content:center;}
+  .navb{border:none; background:transparent; color:var(--muted); font-family:inherit; font-size:13px; font-weight:700; padding:7px 12px; border-radius:9px;}
+  .navb.on{background:var(--bg); color:var(--ink);}
+  .hactions{flex:0 0 auto; display:flex; align-items:center; gap:7px;}
+  .sess{min-width:0; font-size:11px; color:var(--muted); line-height:1.2; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .sess b{color:var(--ink); font-weight:600;}
-  .iconbtn{flex:0 0 auto; border:1px solid var(--line); background:transparent; color:var(--ink); border-radius:10px; padding:7px 11px; font-size:13px; font-weight:600;}
+  .iconbtn{flex:0 0 auto; border:1px solid var(--line); background:transparent; color:var(--ink); border-radius:10px; padding:7px 10px; font-size:13px; font-weight:600;}
+
+  /* データ一覧 */
+  .feed{flex:1 1 auto; min-height:0; display:flex; flex-direction:column;}
+  .feedhead{flex:0 0 auto; padding:10px 12px; border-bottom:1px solid var(--line);}
+  .feedhead h2{margin:0 0 3px; font-size:16px;}
+  .feedhead p{margin:0 0 9px; font-size:12px; color:var(--muted);}
+  .feedctl{display:flex; gap:8px; align-items:center;}
+  .feedctl select{flex:1; padding:9px; border-radius:9px; border:1px solid var(--line); background:var(--bg); color:var(--ink); font-size:14px; font-family:inherit;}
+  .feedctl button{flex:0 0 auto; border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:9px; padding:9px 13px; font-size:13px; font-weight:700; font-family:inherit;}
+  .feedlist{flex:1 1 auto; min-height:0; overflow-y:auto; padding:6px 10px 16px;}
+  .frow{display:flex; align-items:center; gap:11px; padding:11px 8px; border-bottom:1px solid #1e2a3d;}
+  .ft{flex:0 0 auto; width:70px; font-variant-numeric:tabular-nums; font-size:12.5px; color:var(--muted); line-height:1.25;}
+  .fmid{flex:1 1 auto; min-width:0; display:flex; align-items:center; gap:9px;}
+  .flabel{font-size:14px; font-weight:700;}
+  .fcount{font-size:13px; color:var(--muted);}
+  .ftag{flex:0 0 auto; font-size:11px; font-weight:700; color:#93c5fd; background:#1e3a5f; padding:3px 9px; border-radius:999px;}
+  .fcount-badge{margin-left:auto; font-size:12px; color:var(--muted);}
 
   main{flex:1 1 auto; min-height:0; display:flex; flex-direction:column;}
 
@@ -87,10 +110,17 @@
 </head>
 <body>
 
-<header id="hdr" style="display:none">
-  <div class="sess" id="sess"></div>
-  <button class="iconbtn" id="langBtn">EN</button>
-  <button class="iconbtn" id="outBtn">⎋</button>
+<header id="hdr">
+  <div class="brand">バス混雑度<span class="staff" id="brandTag">スタッフ調査</span></div>
+  <nav class="nav">
+    <button class="navb" id="navReport">報告</button>
+    <button class="navb" id="navFeed">データ一覧</button>
+  </nav>
+  <div class="hactions">
+    <span class="sess" id="sess"></span>
+    <button class="iconbtn" id="langBtn">EN</button>
+    <button class="iconbtn" id="outBtn" style="display:none">⎋</button>
+  </div>
 </header>
 
 <main id="main"></main>
@@ -110,7 +140,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-0.5";
+const APP_VERSION = "phaseA-0.6";
 
 /* 軌跡サンプリング設定 */
 const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
@@ -129,6 +159,7 @@ if (configured) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KE
 const $ = (id)=>document.getElementById(id);
 const main = $("main");
 let lang = "ja";
+let view = "report";        // 画面: report(報告) | feed(データ一覧)
 let pending = null;         // 回答中レコード
 const preBuffer = [];       // 直近の測位（クラスタップ前の軌跡を前倒しで取り込む用）
 let finalizeTimer = null;   // 送信後の確定タイマー
@@ -161,6 +192,11 @@ const T = {
     gpsOn:"位置情報 取得中…", gpsOk:"位置情報 OK", gpsNo:"位置情報が取得できません（許可が必要）",
     who:(h)=>`調査員 <b>${h}</b>`, langLabel:"EN",
     notconf:"バックエンド未設定（管理者に連絡）",
+    nav_report:"報告", nav_feed:"データ一覧", brand_tag:"スタッフ調査",
+    feed_title:"報告データ一覧", feed_sub:"届いた直近200件を新しい順に表示します（氏名・位置は非表示）。",
+    feed_all:"すべての混雑度", feed_update:"更新", feed_loading:"読み込み中…",
+    feed_empty:"まだ報告がありません", feed_count:(n)=>`${n}件を表示中`,
+    staff_tag:"スタッフ", feed_err:"読み込みに失敗しました",
   },
   en:{
     auth_title:"Bus crowding logger",
@@ -186,6 +222,11 @@ const T = {
     gpsOn:"Getting location…", gpsOk:"Location OK", gpsNo:"No location (permission needed)",
     who:(h)=>`Surveyor <b>${h}</b>`, langLabel:"日本語",
     notconf:"Backend not configured (contact admin)",
+    nav_report:"Report", nav_feed:"Data", brand_tag:"Staff survey",
+    feed_title:"Reports", feed_sub:"Latest 200 reports, newest first (no names or location).",
+    feed_all:"All levels", feed_update:"Refresh", feed_loading:"Loading…",
+    feed_empty:"No reports yet", feed_count:(n)=>`${n} shown`,
+    staff_tag:"Staff", feed_err:"Failed to load",
   }
 };
 
@@ -355,10 +396,9 @@ async function finalizeNow(immediate){
 
 /* ---------------- 画面描画 ---------------- */
 function renderMain(){
+  if(view!=="report") { updateNav(); return; }   // データ一覧表示中は報告画面で上書きしない
   const t=T[lang];
-  $("hdr").style.display="";
-  $("sess").innerHTML=t.who(handleName());
-  $("langBtn").textContent=t.langLabel;
+  updateNav();
   let cards="";
   t.classes.forEach((c,i)=>{ cards+=`<button class="card c${i+1}" onclick="pickClass(${i+1})"><div class="num">${i+1}</div><div class="lbl">${c.lbl}</div><div class="rng">${c.rng}</div></button>`; });
   let rows="";
@@ -389,13 +429,79 @@ function renderMain(){
   startSampling();   // 一覧表示中は測位を回してpreBufferを温める（前倒し）
 }
 
+/* ---------------- 画面ルーター & ナビ ---------------- */
+function updateNav(){
+  const t=T[lang];
+  $("brandTag").textContent=t.brand_tag;
+  $("navReport").textContent=t.nav_report; $("navFeed").textContent=t.nav_feed;
+  $("navReport").classList.toggle("on", view==="report");
+  $("navFeed").classList.toggle("on", view==="feed");
+  $("langBtn").textContent=t.langLabel;
+  $("sess").innerHTML = (user && view==="report") ? t.who(handleName()) : "";
+  $("outBtn").style.display = user ? "" : "none";
+}
+function setView(v){ view=v; render(); }
+function render(){
+  updateNav();
+  if(view==="feed"){ renderFeed(); }
+  else { if(user) renderMain(); else renderAuth(); }
+}
+
+/* ---------------- データ一覧（公開ビュー report_feed を表示） ---------------- */
+function renderFeed(){
+  const t=T[lang];
+  main.innerHTML=`
+    <div class="feed">
+      <div class="feedhead">
+        <h2>${t.feed_title}</h2><p>${t.feed_sub}</p>
+        <div class="feedctl">
+          <select id="fFilter">
+            <option value="0">${t.feed_all}</option>
+            ${t.classes.map((c,i)=>`<option value="${i+1}">${i+1} · ${c.lbl}</option>`).join("")}
+          </select>
+          <button id="fRefresh">${t.feed_update}</button>
+        </div>
+      </div>
+      <div class="feedlist" id="feedlist"><div class="empty">${t.feed_loading}</div></div>
+    </div>`;
+  $("fRefresh").onclick=loadFeed;
+  $("fFilter").onchange=loadFeed;
+  setStatus();
+  loadFeed();
+}
+async function loadFeed(){
+  const t=T[lang]; const el=$("feedlist"); if(!el) return;
+  if(!configured){ el.innerHTML=`<div class="empty">${t.notconf}</div>`; return; }
+  const cls=parseInt(($("fFilter")||{}).value||"0",10);
+  el.innerHTML=`<div class="empty">${t.feed_loading}</div>`;
+  let q=sb.from("report_feed").select("*").order("created_at",{ascending:false}).limit(200);
+  if(cls) q=q.eq("congestion_class",cls);
+  const { data, error } = await q;
+  if(!el.isConnected) return;
+  if(error){ el.innerHTML=`<div class="empty">${t.feed_err}<br><span style="font-size:11px">${error.message||""}</span></div>`; return; }
+  if(!data || !data.length){ el.innerHTML=`<div class="empty">${t.feed_empty}</div>`; return; }
+  const rows=data.map(r=>{
+    const c=t.classes[r.congestion_class-1]||{lbl:"?"};
+    const d=new Date(r.answered_at||r.created_at);
+    const tm=`${d.getMonth()+1}/${d.getDate()}<br>${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+    const cnt=(r.exact_count!=null)?`${r.exact_count}${t.ppl}`:"";
+    return `<div class="frow">
+      <span class="ft">${tm}</span>
+      <span class="chip c${r.congestion_class}">${r.congestion_class}</span>
+      <span class="fmid"><span class="flabel">${c.lbl}</span><span class="fcount">${cnt}</span></span>
+      <span class="ftag">${t.staff_tag}</span>
+    </div>`;
+  }).join("");
+  el.innerHTML=`<div style="font-size:12px;color:var(--muted);padding:6px 2px 8px">${t.feed_count(data.length)}</div>${rows}`;
+}
+
 /* ---------------- 認証（メール＋パスワード） ---------------- */
 let authMode = "login";   // login | signup | sent
 let authForm = { email:"", pass:"", name:"", sentEmail:"" };
 
 function renderAuth(){
   const t=T[lang];
-  $("hdr").style.display="none";
+  updateNav();
   if(authMode==="sent"){
     main.innerHTML=`
       <div class="login">
@@ -474,20 +580,22 @@ async function submitAuth(){
 }
 
 async function boot(){
-  $("langBtn").onclick=()=>{ lang=(lang==="ja")?"en":"ja"; if(user) renderMain(); else renderAuth(); };
-  $("outBtn").onclick=async()=>{ if(sb){ await sb.auth.signOut(); } user=null; authMode="login"; renderAuth(); };
+  $("langBtn").onclick=()=>{ lang=(lang==="ja")?"en":"ja"; render(); };
+  $("outBtn").onclick=async()=>{ if(sb){ await sb.auth.signOut(); } user=null; authMode="login"; view="report"; render(); };
+  $("navReport").onclick=()=>setView("report");
+  $("navFeed").onclick=()=>setView("feed");
 
-  if(!configured){ renderAuth(); return; }
+  if(!configured){ render(); return; }
 
   const { data:{ session } } = await sb.auth.getSession();
   user = session ? session.user : null;
   sb.auth.onAuthStateChange((_ev, sess)=>{
     user = sess ? sess.user : null;
-    if(user){ renderMain(); flushOutbox(); } else { renderAuth(); }
+    render(); if(user) flushOutbox();
   });
 
-  if(user){ renderMain(); flushOutbox(); }
-  else { renderAuth(); }
+  render();
+  if(user) flushOutbox();
 
   // アプリを離れた瞬間に回答中レコードを確定（手動ボタンの代替）／復帰時に未送信を再送
   document.addEventListener("visibilitychange", ()=>{
