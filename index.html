@@ -144,7 +144,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-0.8";
+const APP_VERSION = "phaseA-0.9";
 
 /* 軌跡サンプリング設定 */
 const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
@@ -165,6 +165,7 @@ const main = $("main");
 let lang = "ja";
 let view = "report";        // 画面: report(報告) | feed(データ一覧)
 let pending = null;         // 回答中レコード
+let answering = false;      // 人数入力画面を表示中か（表示中は再送等で画面を作り直さない）
 const preBuffer = [];       // 直近の測位（クラスタップ前の軌跡を前倒しで取り込む用）
 let finalizeTimer = null;   // 送信後の確定タイマー
 let countdownTimer = null;
@@ -287,7 +288,9 @@ async function flushOutbox(){
       const e=logEntries.find(x=>x.cid===item.cid); if(e){ e.state="ok"; }
     }catch(err){ /* keep for next time */ }
   }
-  renderMain(); setStatus();
+  // 人数入力中は画面を作り直さない（回答フローを中断させない）
+  if(view==="report" && !answering && !pending) renderMain();
+  setStatus();
 }
 
 /* ---------------- GPS 軌跡サンプリング ---------------- */
@@ -352,16 +355,18 @@ function renderCount(){
       <div class="row"><button class="btn primary" id="sendBtn">${t.send}</button></div>
       <div class="row"><button class="btn ghost" id="skipBtn">${t.skip}</button></div>
     </div>`;
+  answering = true;             // 人数入力画面を表示中（背景の再描画から保護）
   const cval=$("cval");
   const show=()=>{ cval.textContent = n>=70?"70+":n; };
   main.querySelectorAll(".stepper button").forEach(b=>{ b.onclick=()=>{ n=Math.max(0,Math.min(70,n+parseInt(b.dataset.d,10))); show(); }; });
-  $("sendBtn").onclick=()=>{ pending.exact_count=n; submit(); };
-  $("skipBtn").onclick=()=>{ pending.exact_count=null; submit(); };
+  $("sendBtn").onclick=()=>{ answering=false; pending.exact_count=n; submit(); };
+  $("skipBtn").onclick=()=>{ answering=false; pending.exact_count=null; submit(); };
   $("backPick").onclick=cancelPick;
 }
 
 // 人数画面で「戻る」: 誤タップしたクラス選択を破棄してクラス一覧へ戻す
 function cancelPick(){
+  answering=false;
   pending=null;                 // 未送信の回答を破棄
   renderMain();                 // クラス選択画面へ
 }
@@ -698,9 +703,16 @@ async function boot(){
   }
   // リスナーは getSession より前に登録（初期URL処理で発火する PASSWORD_RECOVERY を取りこぼさない）
   sb.auth.onAuthStateChange((ev, sess)=>{
+    const prevUid = user ? user.id : null;
     user = sess ? sess.user : null;
+    const uid = user ? user.id : null;
     if(ev==="PASSWORD_RECOVERY"){ authMode="newpass"; view="report"; render(); return; }  // 再設定リンクから復帰
-    render(); if(user) flushOutbox();
+    // ログイン/ログアウトが実際に変わった時だけ画面を作り直す。
+    // スマホのフォーカス復帰やトークン更新でも発火するため、同一ユーザー継続中は
+    // 画面を保持する（回答中にクラス選択へ戻される不具合を防ぐ）。
+    if(uid!==prevUid){ render(); }
+    else { updateNav(); }
+    if(user) flushOutbox();
   });
 
   const { data:{ session } } = await sb.auth.getSession();
@@ -710,7 +722,8 @@ async function boot(){
 
   // アプリを離れた瞬間に回答中レコードを確定（手動ボタンの代替）／復帰時に未送信を再送
   document.addEventListener("visibilitychange", ()=>{
-    if(document.hidden){ if(pending) finalizeNow(true); stopSampling(); }   // 背景化: 確定＆測位停止(電池)
+    // 背景化: 送信後の記録中(pending & 人数入力は終了)だけ確定。人数入力中は保持したまま測位停止。
+    if(document.hidden){ if(pending && !answering) finalizeNow(true); stopSampling(); }
     else if(user){ startSampling(); flushOutbox(); }                        // 復帰: 測位再開＆再送
   });
   window.addEventListener("pagehide", ()=>{ if(pending) finalizeNow(true); });
