@@ -75,7 +75,22 @@
   .lstat{flex:0 0 auto; font-size:11px; color:var(--muted); text-align:right;}
   .lstat.ok{color:#34d399;} .lstat.pend{color:#fbbf24;} .lstat.rec{color:#60a5fa;}
 
-  .center{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; text-align:center; padding:16px;}
+  .center{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; text-align:center; padding:16px; overflow-y:auto;}
+
+  /* 停留所オートコンプリート */
+  .stopwrap{width:100%; max-width:420px; display:flex; flex-direction:column; gap:10px; text-align:left;}
+  .stopfield{position:relative;}
+  .stopfield label{font-size:12px; color:var(--muted); display:block; margin:0 2px 4px;}
+  .stopinput{width:100%;}
+  .stoplist{position:absolute; left:0; right:0; top:100%; z-index:20; background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-top:4px; max-height:220px; overflow-y:auto; display:none; box-shadow:0 8px 24px rgba(0,0,0,.4);}
+  .stoplist.show{display:block;}
+  .stoprow{padding:11px 12px; font-size:14px; border-bottom:1px solid #26344a;}
+  .stoprow:last-child{border-bottom:none;}
+  .stoprow:active{background:var(--line);}
+  .stoprow .dist{float:right; color:var(--muted); font-size:12px;}
+  .stopsel{font-size:12px; color:#34d399; margin:4px 2px 0; min-height:15px;}
+  .stopsel .clr{color:#fca5a5; margin-left:8px; text-decoration:underline;}
+  .stopsrc{font-size:10px; color:var(--muted); margin:2px 2px 0;}
   .center h2{margin:0; font-size:18px; font-weight:700;}
   .center .hint{color:var(--muted); font-size:13px; margin:0;}
   .selchip{display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--muted);}
@@ -133,6 +148,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="stops.js"></script>
 <script>
 /* ==========================================================
    バス混雑度 HITL 収集アプリ (Phase A)
@@ -144,7 +160,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-0.9";
+const APP_VERSION = "phaseA-1.0";
 
 /* 軌跡サンプリング設定 */
 const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
@@ -192,6 +208,10 @@ const T = {
     ],
     countTitle:"正確な人数（任意）", countHint:"数えられれば入力してください",
     back:"戻る", already_registered:"このメールは登録済みです。「ログイン」から入ってください。",
+    board_label:"乗車バス停（任意）", dest_label:"行先バス停（任意）",
+    board_ph:"バス停名を入力（任意）", dest_ph:"バス停名を入力（任意）",
+    stop_selected:"選択済み", stop_clear:"取消",
+    stop_source:"バス停データ出典：国土数値情報（国土交通省）",
     send:"この人数で送信", skip:"人数はスキップ", ppl:"人",
     saved:"保存しました", queued:"端末に保存（後で自動送信）", finishing:"軌跡を記録中",
     saveNow:"今すぐ保存", recording:"記録中", pendingN:(n)=>`未送信 ${n}件`,
@@ -231,6 +251,10 @@ const T = {
     ],
     countTitle:"Exact count (optional)", countHint:"Enter it if you can count",
     back:"Back", already_registered:"This email is already registered. Please use Sign in.",
+    board_label:"Boarding stop (optional)", dest_label:"Destination stop (optional)",
+    board_ph:"Type a stop name (optional)", dest_ph:"Type a stop name (optional)",
+    stop_selected:"selected", stop_clear:"clear",
+    stop_source:"Bus stop data: MLIT National Land Numerical Information",
     send:"Submit count", skip:"Skip count", ppl:"",
     saved:"Saved", queued:"Saved on device (will auto-send)", finishing:"Recording trajectory",
     saveNow:"Save now", recording:"recording", pendingN:(n)=>`${n} unsent`,
@@ -339,6 +363,50 @@ function pickClass(cls){
   renderCount();
 }
 
+/* ---------------- 停留所オートコンプリート ---------------- */
+function jhav(la1,ln1,la2,ln2){ const R=6371000,r=Math.PI/180;
+  const dla=(la2-la1)*r, dln=(ln2-ln1)*r;
+  const a=Math.sin(dla/2)**2+Math.cos(la1*r)*Math.cos(la2*r)*Math.sin(dln/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a)); }
+function userLoc(){ for(let i=preBuffer.length-1;i>=0;i--){ const p=preBuffer[i]; if(p.lat&&p.lng) return [p.lat,p.lng]; } return null; }
+function stopCandidates(q){
+  const S=window.NARA_STOPS||[]; const loc=userLoc(); const ql=(q||"").trim().toLowerCase();
+  let arr;
+  if(!ql){                               // 空欄: 近い順（GPSがあれば）、無ければ先頭数件
+    arr = loc ? S.slice().sort((x,y)=>jhav(loc[0],loc[1],x.a,x.o)-jhav(loc[0],loc[1],y.a,y.o)) : S.slice();
+  } else {                               // 入力あり: 前方一致→部分一致
+    const pre=[], sub=[];
+    for(const s of S){ const n=s.n.toLowerCase(); if(n.startsWith(ql)) pre.push(s); else if(n.includes(ql)) sub.push(s); }
+    arr = pre.concat(sub);
+  }
+  return arr.slice(0,8).map(s=> loc ? Object.assign({_d:jhav(loc[0],loc[1],s.a,s.o)}, s) : Object.assign({}, s));
+}
+function wireStopField(inputId, listId, selId, field){
+  const inp=$(inputId), list=$(listId), sel=$(selId);
+  if(!inp) return;
+  const fmtD=(d)=> d<1000 ? Math.round(d)+"m" : (d/1000).toFixed(1)+"km";
+  const clear=()=>{ if(pending) pending[field]=null; inp.value=""; sel.innerHTML=""; list.classList.remove("show"); };
+  const choose=(s)=>{ if(pending) pending[field]={name:s.n, lat:s.a, lng:s.o};
+    inp.value=s.n; list.classList.remove("show");
+    sel.innerHTML=`✓ ${T[lang].stop_selected}: ${s.n} <span class="clr">${T[lang].stop_clear}</span>`;
+    const c=sel.querySelector(".clr"); if(c) c.onclick=clear; };
+  const render=(q)=>{
+    const cs=stopCandidates(q);
+    if(!cs.length){ list.classList.remove("show"); list.innerHTML=""; return; }
+    list.innerHTML=cs.map((s,i)=>`<div class="stoprow" data-i="${i}">${s.n}${s._d!=null?`<span class="dist">${fmtD(s._d)}</span>`:""}</div>`).join("");
+    list.classList.add("show");
+    list.querySelectorAll(".stoprow").forEach(row=>{ row.onclick=()=>choose(cs[+row.dataset.i]); });
+  };
+  inp.addEventListener("input", ()=>{ if(pending) pending[field]=null; sel.innerHTML=""; render(inp.value); });
+  inp.addEventListener("focus", ()=>{ if(!inp.value) render(""); });
+  inp.addEventListener("blur",  ()=>{ setTimeout(()=>list.classList.remove("show"),180); });  // 行タップ後に閉じる
+  if(pending && pending[field]){                       // 既存選択を復元
+    inp.value=pending[field].name;
+    sel.innerHTML=`✓ ${T[lang].stop_selected}: ${pending[field].name} <span class="clr">${T[lang].stop_clear}</span>`;
+    const c=sel.querySelector(".clr"); if(c) c.onclick=clear;
+  }
+}
+
 function renderCount(){
   const t=T[lang], n0=0; let n=n0;
   const cls=t.classes[pending.congestion_class-1];
@@ -352,10 +420,27 @@ function renderCount(){
         <div class="count" id="cval">0</div>
         <button data-d="1">＋</button><button data-d="10">+10</button>
       </div>
+      <div class="stopwrap">
+        <div class="stopfield">
+          <label>${t.board_label}</label>
+          <input class="afield stopinput" id="boardInput" type="text" autocomplete="off" placeholder="${t.board_ph}">
+          <div class="stoplist" id="boardList"></div>
+          <div class="stopsel" id="boardSel"></div>
+        </div>
+        <div class="stopfield">
+          <label>${t.dest_label}</label>
+          <input class="afield stopinput" id="destInput" type="text" autocomplete="off" placeholder="${t.dest_ph}">
+          <div class="stoplist" id="destList"></div>
+          <div class="stopsel" id="destSel"></div>
+        </div>
+        <div class="stopsrc">${t.stop_source}</div>
+      </div>
       <div class="row"><button class="btn primary" id="sendBtn">${t.send}</button></div>
       <div class="row"><button class="btn ghost" id="skipBtn">${t.skip}</button></div>
     </div>`;
   answering = true;             // 人数入力画面を表示中（背景の再描画から保護）
+  wireStopField("boardInput","boardList","boardSel","board_stop");
+  wireStopField("destInput","destList","destSel","dest_stop");
   const cval=$("cval");
   const show=()=>{ cval.textContent = n>=70?"70+":n; };
   main.querySelectorAll(".stepper button").forEach(b=>{ b.onclick=()=>{ n=Math.max(0,Math.min(70,n+parseInt(b.dataset.d,10))); show(); }; });
@@ -374,6 +459,7 @@ function cancelPick(){
 function buildRec(p){
   return { answered_at:p.answered_at, congestion_class:p.congestion_class,
            exact_count:p.exact_count, trajectory:p.trajectory,
+           board_stop:p.board_stop||null, dest_stop:p.dest_stop||null,
            lang:lang, app_version:APP_VERSION };
 }
 function syncPendingToOutbox(ready){
