@@ -43,20 +43,23 @@
   .ftag{flex:0 0 auto; font-size:11px; font-weight:700; color:#93c5fd; background:#1e3a5f; padding:3px 9px; border-radius:999px;}
   .fcount-badge{margin-left:auto; font-size:12px; color:var(--muted);}
 
-  main{flex:1 1 auto; min-height:0; display:flex; flex-direction:column;}
+  main{flex:1 1 auto; min-height:0; display:flex; flex-direction:column; position:relative;}
+  .backbtn{position:absolute; top:10px; left:10px; z-index:5; border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:10px; padding:9px 14px; font-size:14px; font-weight:700; font-family:inherit; display:inline-flex; align-items:center; gap:6px;}
+  .backbtn:active{background:var(--line);}
 
   .picker{flex:0 0 auto; padding:8px 10px; border-bottom:1px solid var(--line);}
   .ptitle{font-size:12px; color:var(--muted); margin:0 2px 6px;}
-  .grid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;}
+  .grid{display:grid; grid-template-columns:1fr; gap:7px; max-width:300px; margin:0 auto;}
   .card{
-    border:none; border-radius:12px; color:#fff; font-family:inherit; padding:7px 4px;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
-    transition:transform .06s ease;
+    border:none; border-radius:12px; color:#fff; font-family:inherit; padding:0 16px; min-height:56px;
+    display:flex; flex-direction:row; align-items:center; justify-content:flex-start; gap:14px;
+    transition:transform .06s ease; text-align:left;
   }
-  .card:active{transform:scale(.94);}
-  .card .num{font-size:18px; font-weight:800;}
-  .card .lbl{font-size:11px; font-weight:700; line-height:1.1;}
-  .card .rng{font-size:10px; opacity:.9;}
+  .card:active{transform:scale(.97);}
+  .card .num{font-size:23px; font-weight:800; width:30px; text-align:center; flex:0 0 auto;}
+  .card .cardtext{display:flex; flex-direction:row; align-items:baseline; gap:8px; line-height:1.15;}
+  .card .lbl{font-size:14px; font-weight:800;}
+  .card .rng{font-size:12px; opacity:.9; font-weight:600;}
   .c1{background:var(--c1);} .c2{background:var(--c2);} .c3{background:var(--c3);}
   .c4{background:var(--c4);} .c5{background:var(--c5);} .c6{background:var(--c6);}
 
@@ -174,7 +177,7 @@ const T = {
     auth_intro:"NAIST共同研究の教師データ収集です。メールアドレスで登録／ログインしてください。回答はクラスと人数だけ、位置と時刻は自動で記録されます。",
     tab_login:"ログイン", tab_signup:"新規登録",
     ph_name:"表示名（調査員名）", ph_email:"メールアドレス", ph_pass:"パスワード（8文字以上）",
-    do_login:"ログイン", do_signup:"登録して確認メールを送る", signing:"処理中…",
+    do_login:"ログイン", do_signup:"登録してはじめる", signing:"処理中…",
     sent_title:"確認メールを送信しました",
     sent_desc:(e)=>`${e} 宛に確認メールを送りました。<b>同じ端末のこのブラウザ</b>でメール内のリンクを開くと、ここに戻って自動でログインします。`,
     resend:"確認メールを再送", to_login:"ログインへ戻る", resent:"再送しました",
@@ -187,9 +190,11 @@ const T = {
       {lbl:"立ち客", rng:"26〜40人"},{lbl:"混雑", rng:"41〜55人"},{lbl:"満員近い", rng:"56人〜"},
     ],
     countTitle:"正確な人数（任意）", countHint:"数えられれば入力してください",
+    back:"戻る", already_registered:"このメールは登録済みです。「ログイン」から入ってください。",
     send:"この人数で送信", skip:"人数はスキップ", ppl:"人",
     saved:"保存しました", queued:"端末に保存（後で自動送信）", finishing:"軌跡を記録中",
     saveNow:"今すぐ保存", recording:"記録中", pendingN:(n)=>`未送信 ${n}件`,
+    st_ok:"送信済", st_pend:"未送信", st_rec:"記録中", log_head:"送信状況",
     gpsOn:"位置情報 取得中…", gpsOk:"位置情報 OK", gpsNo:"位置情報が取得できません（許可が必要）",
     who:(h)=>`調査員 <b>${h}</b>`, langLabel:"EN",
     notconf:"バックエンド未設定（管理者に連絡）",
@@ -211,7 +216,7 @@ const T = {
     auth_intro:"HITL data collection for the NAIST study. Register / sign in with your email. You only tap class and count; location and time are recorded automatically.",
     tab_login:"Sign in", tab_signup:"Sign up",
     ph_name:"Display name (surveyor)", ph_email:"Email", ph_pass:"Password (8+ chars)",
-    do_login:"Sign in", do_signup:"Sign up & send confirmation", signing:"Working…",
+    do_login:"Sign in", do_signup:"Create account", signing:"Working…",
     sent_title:"Confirmation email sent",
     sent_desc:(e)=>`We sent a confirmation email to ${e}. Open the link <b>in this same browser</b> and you'll return here signed in.`,
     resend:"Resend confirmation", to_login:"Back to sign in", resent:"Resent",
@@ -224,9 +229,11 @@ const T = {
       {lbl:"Standing", rng:"26–40"},{lbl:"Crowded", rng:"41–55"},{lbl:"Packed", rng:"56+"},
     ],
     countTitle:"Exact count (optional)", countHint:"Enter it if you can count",
+    back:"Back", already_registered:"This email is already registered. Please use Sign in.",
     send:"Submit count", skip:"Skip count", ppl:"",
     saved:"Saved", queued:"Saved on device (will auto-send)", finishing:"Recording trajectory",
     saveNow:"Save now", recording:"recording", pendingN:(n)=>`${n} unsent`,
+    st_ok:"Sent", st_pend:"Unsent", st_rec:"recording", log_head:"Status",
     gpsOn:"Getting location…", gpsOk:"Location OK", gpsNo:"No location (permission needed)",
     who:(h)=>`Surveyor <b>${h}</b>`, langLabel:"日本語",
     notconf:"Backend not configured (contact admin)",
@@ -333,6 +340,7 @@ function renderCount(){
   const t=T[lang], n0=0; let n=n0;
   const cls=t.classes[pending.congestion_class-1];
   main.innerHTML = `
+    <button class="backbtn" id="backPick">← ${t.back}</button>
     <div class="center">
       <div class="selchip"><span class="chip c${pending.congestion_class}">${pending.congestion_class}</span>${cls.lbl}（${cls.rng}）</div>
       <h2>${t.countTitle}</h2><p class="hint">${t.countHint}</p>
@@ -349,6 +357,13 @@ function renderCount(){
   main.querySelectorAll(".stepper button").forEach(b=>{ b.onclick=()=>{ n=Math.max(0,Math.min(70,n+parseInt(b.dataset.d,10))); show(); }; });
   $("sendBtn").onclick=()=>{ pending.exact_count=n; submit(); };
   $("skipBtn").onclick=()=>{ pending.exact_count=null; submit(); };
+  $("backPick").onclick=cancelPick;
+}
+
+// 人数画面で「戻る」: 誤タップしたクラス選択を破棄してクラス一覧へ戻す
+function cancelPick(){
+  pending=null;                 // 未送信の回答を破棄
+  renderMain();                 // クラス選択画面へ
 }
 
 function buildRec(p){
@@ -415,7 +430,7 @@ function renderMain(){
   const t=T[lang];
   updateNav();
   let cards="";
-  t.classes.forEach((c,i)=>{ cards+=`<button class="card c${i+1}" onclick="pickClass(${i+1})"><div class="num">${i+1}</div><div class="lbl">${c.lbl}</div><div class="rng">${c.rng}</div></button>`; });
+  t.classes.forEach((c,i)=>{ cards+=`<button class="card c${i+1}" onclick="pickClass(${i+1})"><span class="num">${i+1}</span><span class="cardtext"><span class="lbl">${c.lbl}</span><span class="rng">${c.rng}</span></span></button>`; });
   let rows="";
   if(logEntries.length===0){ rows=`<div class="empty">${t.none}</div>`; }
   else{
@@ -423,9 +438,9 @@ function renderMain(){
       const cls=t.classes[e.congestion_class-1];
       const countTxt=(e.exact_count!=null)?`${e.exact_count}${t.ppl}`:`<span style="color:var(--muted)">${cls.lbl}</span>`;
       let st="", stc="";
-      if(e.state==="rec"){ stc="rec"; st=`${t.recording} ${e.remain!=null?e.remain+"s":""}<br>${(e.npts||0)}pt`; }
-      else if(e.state==="ok"){ stc="ok"; st=`✓ ${(e.npts||0)}pt`; }
-      else if(e.state==="pend"){ stc="pend"; st=`⧗ ${(e.npts||0)}pt`; }
+      if(e.state==="rec"){ stc="rec"; st=`${t.st_rec} ${e.remain!=null?e.remain+"s":""}<br>${(e.npts||0)}pt`; }
+      else if(e.state==="ok"){ stc="ok"; st=`✓ ${t.st_ok}<br>${(e.npts||0)}pt`; }
+      else if(e.state==="pend"){ stc="pend"; st=`⧗ ${t.st_pend}<br>${(e.npts||0)}pt`; }
       rows+=`<div class="logrow">
         <span class="chip c${e.congestion_class}">${e.congestion_class}</span>
         <span class="lt">${hhmm(e.answered_at)}</span>
@@ -437,7 +452,7 @@ function renderMain(){
   main.innerHTML = `
     <div class="picker"><p class="ptitle">${t.pick}</p><div class="grid">${cards}</div></div>
     <div class="log">
-      <div class="lhead"><span>${t.records} ${logEntries.length}</span></div>
+      <div class="lhead"><span>${t.records} ${logEntries.length}</span><span>${t.log_head}</span></div>
       ${rows}
     </div>`;
   setStatus();
@@ -646,6 +661,11 @@ async function submitAuth(){
       const { data, error } = await sb.auth.signUp({ email, password:pass,
         options:{ emailRedirectTo: location.origin+location.pathname, data:{ display_name:authForm.name } } });
       if(error) throw error;
+      // 既登録メールの検知: Supabaseはユーザー列挙対策で、登録済みメールでも
+      // エラーを返さず identities:[] の“ダミー”userを返す。これを弾いてログインへ誘導。
+      if(data.user && Array.isArray(data.user.identities) && data.user.identities.length===0){
+        authForm.email=email; authMode="login"; renderAuth(); authNote(t.already_registered); return;
+      }
       if(data.session){ /* 確認OFF環境: 即ログイン(onAuthStateChangeが処理) */ }
       else { authForm.sentEmail=email; authMode="sent"; renderAuth(); return; }
     } else {
