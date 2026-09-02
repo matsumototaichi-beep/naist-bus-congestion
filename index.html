@@ -424,7 +424,10 @@ async function finalizeNow(immediate){
   }
   if(!ok){ outboxUpsert({ cid:p.cid, ready:true, rec }); }
   if(entry){ entry.state = ok?"ok":"pend"; entry.npts=p.trajectory.length; delete entry.remain; }
-  renderMain(); setStatus();
+  // 非同期の後処理: 次の回答を入力中(新pending)や人数画面表示中は画面を作り直さない
+  // （前の回答の確定処理が、出したばかりの人数画面を上書きしてしまう不具合を防ぐ）
+  if(view==="report" && !answering && !pending) renderMain();
+  setStatus();
   toast(ok?T[lang].saved:T[lang].queued, ok?"#16a34a":"#f59e0b");
   // 測位は止めない（次回の前倒し用にpreBufferを温め続ける。画面を離れた時のみ停止）
 }
