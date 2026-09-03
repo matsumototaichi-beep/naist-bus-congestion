@@ -82,7 +82,8 @@
   .stopfield{position:relative;}
   .stopfield label{font-size:12px; color:var(--muted); display:block; margin:0 2px 4px;}
   .stopinput{width:100%;}
-  .stoplist{position:absolute; left:0; right:0; top:100%; z-index:20; background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-top:4px; max-height:220px; overflow-y:auto; display:none; box-shadow:0 8px 24px rgba(0,0,0,.4);}
+  .stoplist{position:absolute; left:0; right:0; top:100%; z-index:20; background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-top:4px; max-height:220px; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; display:none; box-shadow:0 8px 24px rgba(0,0,0,.4);}
+  .stoprow{touch-action:pan-y;}
   .stoplist.show{display:block;}
   .stoprow{padding:11px 12px; font-size:14px; border-bottom:1px solid #26344a;}
   .stoprow:last-child{border-bottom:none;}
@@ -395,24 +396,33 @@ function wireStopField(inputId, listId, selId, field){
     if(!cs.length){ list.classList.remove("show"); list.innerHTML=""; return; }
     list.innerHTML=cs.map((s,i)=>`<div class="stoprow" data-i="${i}">${s.n}${s._d!=null?`<span class="dist">${fmtD(s._d)}</span>`:""}</div>`).join("");
     list.classList.add("show");
-    list.querySelectorAll(".stoprow").forEach(row=>{
-      // pointerdownでフォーカス喪失(blur)を止め、タップが確実に選択として届くようにする
-      row.addEventListener("pointerdown",(e)=>{ e.preventDefault(); choose(cs[+row.dataset.i]); });
-      row.addEventListener("click",()=>choose(cs[+row.dataset.i]));   // 保険
-    });
+    // clickで確定（ドラッグ＝スクロール時はclickが発火しないので、スクロールと両立）
+    list.querySelectorAll(".stoprow").forEach(row=>{ row.addEventListener("click",()=>choose(cs[+row.dataset.i])); });
   };
   inp.addEventListener("input", ()=>{ if(pending) pending[field]=null; sel.innerHTML=""; render(inp.value); });
   inp.addEventListener("focus", ()=>{ if(!inp.value) render(""); });
-  inp.addEventListener("blur",  ()=>{ setTimeout(()=>list.classList.remove("show"),180); });  // 行タップ後に閉じる
+  // blurでの自動閉じはしない（一覧のスクロールを妨げるため）。一覧外タップで閉じる（下の共通ハンドラ）。
   if(pending && pending[field]){                       // 既存選択を復元
     inp.value=pending[field].name;
     sel.innerHTML=`✓ ${T[lang].stop_selected}: ${pending[field].name} <span class="clr">${T[lang].stop_clear}</span>`;
     const c=sel.querySelector(".clr"); if(c) c.onclick=clear;
   }
+  // 一覧外をタップしたら開いている候補一覧を閉じる（全フィールド共通・1回だけ登録）
+  if(!window.__stopOutsideBound){
+    document.addEventListener("pointerdown",(e)=>{
+      const fld=(e.target.closest)?e.target.closest(".stopfield"):null;
+      document.querySelectorAll(".stoplist.show").forEach(l=>{ if(!fld || !fld.contains(l)) l.classList.remove("show"); });
+    });
+    window.__stopOutsideBound=true;
+  }
 }
 
+// クラスごとの人数レンジ（選んだクラスの範囲内でのみ増減できる）
+const COUNT_RANGES=[[0,5],[6,15],[16,25],[26,40],[41,55],[56,99]];
 function renderCount(){
-  const t=T[lang], n0=0; let n=n0;
+  const t=T[lang];
+  const [lo,hi]=COUNT_RANGES[pending.congestion_class-1];
+  let n=lo;                       // 初期値はそのクラスの下限
   const cls=t.classes[pending.congestion_class-1];
   main.innerHTML = `
     <button class="backbtn" id="backPick">← ${t.back}</button>
@@ -446,8 +456,9 @@ function renderCount(){
   wireStopField("boardInput","boardList","boardSel","board_stop");
   wireStopField("destInput","destList","destSel","dest_stop");
   const cval=$("cval");
-  const show=()=>{ cval.textContent = n>=70?"70+":n; };
-  main.querySelectorAll(".stepper button").forEach(b=>{ b.onclick=()=>{ n=Math.max(0,Math.min(70,n+parseInt(b.dataset.d,10))); show(); }; });
+  const show=()=>{ cval.textContent = (hi>=99 && n>=99)?"99+":String(n); };
+  show();                         // 初期表示（下限）
+  main.querySelectorAll(".stepper button").forEach(b=>{ b.onclick=()=>{ n=Math.max(lo,Math.min(hi,n+parseInt(b.dataset.d,10))); show(); }; });
   $("sendBtn").onclick=()=>{ answering=false; pending.exact_count=n; submit(); };
   $("skipBtn").onclick=()=>{ answering=false; pending.exact_count=null; submit(); };
   $("backPick").onclick=cancelPick;
