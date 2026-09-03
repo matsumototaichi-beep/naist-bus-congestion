@@ -168,8 +168,13 @@ const APP_VERSION = "phaseA-1.1";
 /* 管理者アカウント: ここに載るメールのみ「データ一覧」を閲覧・遷移できる。
    スタッフ（それ以外）にはデータ一覧ボタン自体を表示しない。必要に応じて編集。
    ※これは画面上の制御。真のアクセス制限にはSupabase側RLSも別途必要（相談）。 */
-const ADMIN_EMAILS = ["taichi1104.deters@gmail.com"];
+const ADMIN_EMAILS = ["taichi1104.deters@gmail.com", "admin@id.local"];  // admin@id.local = 共有管理者(ID:admin)
 function isAdmin(){ return !!(user && ADMIN_EMAILS.map(s=>s.toLowerCase()).includes((user.email||"").toLowerCase())); }
+
+/* ID ログイン: "@"を含まない入力は固定ドメインを付けてメール扱いにする。
+   → 先輩/先方と共有する管理者アカウントを ID＋パスワードだけでログインできる。 */
+const ID_DOMAIN = "id.local";
+function normLogin(v){ v=(v||"").trim(); return (v && !v.includes("@")) ? v.toLowerCase()+"@"+ID_DOMAIN : v; }
 
 /* 軌跡サンプリング設定 */
 const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
@@ -378,7 +383,26 @@ function pickClass(cls){
               answered_at:new Date().toISOString(),
               firstTs: seed.length ? (now-PRE_MS) : now, trajectory: seed };
   startSampling();
+  grabOneShot();     // #5(A): 即しまわれても代表点が1つ残るよう、その場で一発測位
   renderCount();
+}
+
+// 回答時に位置を一発取得（軌跡が空でも代表点を確保）。任意・失敗しても無視。
+function grabOneShot(){
+  if(!navigator.geolocation) return;
+  const cid=pending && pending.cid;
+  navigator.geolocation.getCurrentPosition((p)=>{
+    if(!pending || pending.cid!==cid || !pending.trajectory) return;
+    const c=p.coords;
+    const pt={ t:nowSec(), lat:+c.latitude.toFixed(6), lng:+c.longitude.toFixed(6), acc:Math.round(c.accuracy),
+               hdg:(c.heading!=null&&!isNaN(c.heading))?Math.round(c.heading):null,
+               spd:(c.speed!=null&&!isNaN(c.speed))?+c.speed.toFixed(1):null };
+    if(!pending.trajectory.some(q=>Math.abs(q.t-pt.t)<2)){   // 同時刻の重複を避けて先頭に
+      pending.trajectory.unshift(pt);
+      if(pending.cid) syncPendingToOutbox(false);
+    }
+    geoOk=true; setStatus(T[lang].gpsOk);
+  }, ()=>{}, { enableHighAccuracy:true, maximumAge:10000, timeout:8000 });
 }
 
 /* ---------------- 停留所オートコンプリート ---------------- */
@@ -792,7 +816,7 @@ async function submitAuth(){
   const t=T[lang];
   if(!configured){ toast(t.notconf,"#dc2626"); return; }
   grabAuth();
-  const email=authForm.email, pass=authForm.pass;
+  const email=normLogin(authForm.email), pass=authForm.pass;   // ID入力なら固定ドメイン付与
   if(!email){ authNote(t.err_email); return; }
   if(!pass || pass.length<8){ authNote(t.err_pass); return; }
   const btn=$("authBtn"); if(btn){ btn.disabled=true; btn.textContent=t.signing; }
