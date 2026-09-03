@@ -395,7 +395,11 @@ function wireStopField(inputId, listId, selId, field){
     if(!cs.length){ list.classList.remove("show"); list.innerHTML=""; return; }
     list.innerHTML=cs.map((s,i)=>`<div class="stoprow" data-i="${i}">${s.n}${s._d!=null?`<span class="dist">${fmtD(s._d)}</span>`:""}</div>`).join("");
     list.classList.add("show");
-    list.querySelectorAll(".stoprow").forEach(row=>{ row.onclick=()=>choose(cs[+row.dataset.i]); });
+    list.querySelectorAll(".stoprow").forEach(row=>{
+      // pointerdownでフォーカス喪失(blur)を止め、タップが確実に選択として届くようにする
+      row.addEventListener("pointerdown",(e)=>{ e.preventDefault(); choose(cs[+row.dataset.i]); });
+      row.addEventListener("click",()=>choose(cs[+row.dataset.i]));   // 保険
+    });
   };
   inp.addEventListener("input", ()=>{ if(pending) pending[field]=null; sel.innerHTML=""; render(inp.value); });
   inp.addEventListener("focus", ()=>{ if(!inp.value) render(""); });
