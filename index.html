@@ -63,8 +63,8 @@
   .c1{background:var(--c1);} .c2{background:var(--c2);} .c3{background:var(--c3);}
   .c4{background:var(--c4);} .c5{background:var(--c5);} .c6{background:var(--c6);}
 
-  .log{flex:1 1 auto; min-height:0; overflow-y:auto; padding:6px 10px 14px;}
-  .lhead{position:sticky; top:0; background:var(--bg); font-size:12px; color:var(--muted); padding:6px 2px; display:flex; justify-content:space-between; align-items:center;}
+  .log{flex:1 1 auto; min-height:0; overflow-y:auto; padding:0 10px 14px; background:var(--bg);}
+  .lhead{position:sticky; top:0; z-index:3; background:var(--bg); font-size:12px; color:var(--muted); padding:9px 12px; margin:0 -10px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line);}
   .empty{color:var(--muted); font-size:13px; text-align:center; padding:28px 10px;}
   .logrow{display:flex; align-items:center; gap:10px; padding:9px 6px; border-bottom:1px solid #1e2a3d;}
   .chip{flex:0 0 auto; width:26px; height:26px; border-radius:7px; color:#fff; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center;}
@@ -100,6 +100,8 @@
   .stepper button{width:58px; height:58px; border-radius:14px; border:1px solid var(--line); background:var(--panel); color:var(--ink); font-size:20px; font-weight:700;}
   .stepper button:active{background:var(--line);}
   .count{min-width:110px; font-size:46px; font-weight:800;}
+  .rangeind{font-size:14px; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:999px; padding:5px 14px;}
+  .rangeind b{font-weight:800;}
   .row{display:flex; gap:10px; width:100%; max-width:420px;}
   .btn{flex:1; border:none; border-radius:14px; padding:15px; font-size:15px; font-weight:700; font-family:inherit; color:#fff;}
   .btn.primary{background:#2563eb;} .btn.ghost{background:transparent; color:var(--muted); border:1px solid var(--line);}
@@ -213,6 +215,7 @@ const T = {
     board_ph:"バス停名を入力（任意）", dest_ph:"バス停名を入力（任意）",
     stop_selected:"選択済み", stop_clear:"取消",
     stop_source:"バス停データ出典：国土数値情報（国土交通省）",
+    stop_pick_hint:"候補から選んでください", count_range:"入力範囲",
     send:"送信", skip:"スキップ", ppl:"人",
     saved:"保存しました", queued:"端末に保存（後で自動送信）", finishing:"軌跡を記録中",
     saveNow:"今すぐ保存", recording:"記録中", pendingN:(n)=>`未送信 ${n}件`,
@@ -234,47 +237,48 @@ const T = {
     newpass_done_desc:"新しいパスワードでログインしました。", go_app:"アプリへ進む",
   },
   en:{
-    auth_title:"Bus crowding logger",
-    auth_intro:"HITL data collection for the NAIST study. Register / sign in with your email. You only tap class and count; location and time are recorded automatically.",
+    auth_title:"Bus Crowding Survey",
+    auth_intro:"Training-data collection for the NAIST joint research. Register or sign in with your email. You only choose the crowding level and count — your location and time are recorded automatically.",
     tab_login:"Sign in", tab_signup:"Sign up",
-    ph_name:"Display name (surveyor)", ph_email:"Email", ph_pass:"Password (8+ chars)",
-    do_login:"Sign in", do_signup:"Create account", signing:"Working…",
+    ph_name:"Display name (surveyor)", ph_email:"Email address", ph_pass:"Password (8+ characters)",
+    do_login:"Sign in", do_signup:"Register & start", signing:"Processing…",
     sent_title:"Confirmation email sent",
-    sent_desc:(e)=>`We sent a confirmation email to ${e}. Open the link <b>in this same browser</b> and you'll return here signed in.`,
-    resend:"Resend confirmation", to_login:"Back to sign in", resent:"Resent",
-    err_login:"Wrong email or password", err_unconfirmed:"Email not confirmed yet. Open the link in the confirmation email.",
-    err_pass:"Password must be at least 8 characters", err_email:"Enter your email", err_name:"Enter a display name",
-    login_wait:"Working…",
-    pick:"Select crowding", records:"Records", none:"No records yet",
+    sent_desc:(e)=>`We sent a confirmation email to ${e}. Open the link <b>in this same browser</b> to return here signed in.`,
+    resend:"Resend confirmation email", to_login:"Back to sign in", resent:"Resent",
+    err_login:"Incorrect email or password", err_unconfirmed:"Your email isn't confirmed yet. Open the link in the confirmation email.",
+    err_pass:"Password must be at least 8 characters", err_email:"Please enter your email", err_name:"Please enter a display name",
+    login_wait:"Processing…",
+    pick:"Select the crowding level", records:"Records", none:"No records yet",
     classes:[
-      {lbl:"Empty", rng:"0–5"},{lbl:"Light", rng:"6–15"},{lbl:"Seats full", rng:"16–25"},
-      {lbl:"Standing", rng:"26–40"},{lbl:"Crowded", rng:"41–55"},{lbl:"Packed", rng:"56+"},
+      {lbl:"Empty", rng:"0–5"},{lbl:"Fairly empty", rng:"6–15"},{lbl:"Seats filling up", rng:"16–25"},
+      {lbl:"Some standing", rng:"26–40"},{lbl:"Crowded", rng:"41–55"},{lbl:"Nearly full", rng:"56+"},
     ],
-    countTitle:"Exact count (optional)", countHint:"Enter it if you can count",
-    back:"Back", already_registered:"This email is already registered. Please use Sign in.",
+    countTitle:"Exact count (optional)", countHint:"Enter it only if you actually counted",
+    back:"Back", already_registered:"This email is already registered. Please sign in instead.",
     board_label:"Boarding stop (optional)", dest_label:"Destination stop (optional)",
     board_ph:"Type a stop name (optional)", dest_ph:"Type a stop name (optional)",
-    stop_selected:"selected", stop_clear:"clear",
-    stop_source:"Bus stop data: MLIT National Land Numerical Information",
+    stop_selected:"Selected", stop_clear:"Clear",
+    stop_source:"Bus-stop data: MLIT National Land Numerical Information",
+    stop_pick_hint:"Choose one from the list", count_range:"Range",
     send:"Submit", skip:"Skip", ppl:"",
-    saved:"Saved", queued:"Saved on device (will auto-send)", finishing:"Recording trajectory",
-    saveNow:"Save now", recording:"recording", pendingN:(n)=>`${n} unsent`,
-    st_ok:"Sent", st_pend:"Unsent", st_rec:"recording", log_head:"Status",
-    gpsOn:"Getting location…", gpsOk:"Location OK", gpsNo:"No location (permission needed)",
+    saved:"Saved", queued:"Saved on your device (will send later)", finishing:"Recording your path",
+    saveNow:"Save now", recording:"Recording", pendingN:(n)=>`${n} unsent`,
+    st_ok:"Sent", st_pend:"Not sent", st_rec:"Recording", log_head:"Status",
+    gpsOn:"Getting location…", gpsOk:"Location OK", gpsNo:"Location unavailable (permission required)",
     who:(h)=>`Surveyor <b>${h}</b>`, langLabel:"日本語",
-    notconf:"Backend not configured (contact admin)",
+    notconf:"Backend not configured (contact the administrator)",
     nav_report:"Report", nav_feed:"Data", brand_tag:"Staff survey",
-    feed_title:"Reports", feed_sub:"Latest 200 reports, newest first (no names or location).",
+    feed_title:"Reports", feed_sub:"The latest 200 reports, newest first (names and location are hidden).",
     feed_all:"All levels", feed_update:"Refresh", feed_loading:"Loading…",
-    feed_empty:"No reports yet", feed_count:(n)=>`${n} shown`,
+    feed_empty:"No reports yet", feed_count:(n)=>`Showing ${n}`,
     staff_tag:"Staff", feed_err:"Failed to load",
-    feed_login:"Sign in to view the data.", feed_login_btn:"To sign in",
-    forgot:"Forgot password?",
+    feed_login:"Please sign in to view the data.", feed_login_btn:"Go to sign in",
+    forgot:"Forgot your password?",
     reset_title:"Reset password", reset_desc:"We'll email a reset link to your registered address.",
     reset_send:"Send reset email", reset_sent:"Reset email sent. Open the link in this same browser.",
-    newpass_title:"Reset your password", newpass_desc:"Enter a new password. You'll be signed in once it's set (no extra confirmation email).",
-    newpass_ph:"New password (8+ chars)", newpass_save:"Update password", newpass_done:"Password updated",
-    newpass_done_desc:"Signed in with your new password.", go_app:"Go to app",
+    newpass_title:"Set a new password", newpass_desc:"Enter a new password. You'll be signed in as soon as it's set (no extra confirmation email).",
+    newpass_ph:"New password (8+ characters)", newpass_save:"Update password", newpass_done:"Password updated",
+    newpass_done_desc:"You're signed in with your new password.", go_app:"Go to the app",
   }
 };
 
@@ -282,6 +286,11 @@ const T = {
 function toast(msg,color){ const el=$("toast"); el.textContent=msg; el.style.background=color||"#16a34a"; el.classList.add("show"); setTimeout(()=>el.classList.remove("show"),1500); }
 function hhmm(iso){ const d=new Date(iso); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
 function nowSec(){ return Math.floor(Date.now()/1000); }
+function uuid(){   // crypto.randomUUID 未対応環境(旧iOS Safari等)でも落ちないように
+  if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{
+    const r=Math.random()*16|0; return (c==="x"?r:(r&0x3|0x8)).toString(16); });
+}
 function handleName(){
   if(!user) return "—";
   const m=user.user_metadata||{};
@@ -311,7 +320,7 @@ async function flushOutbox(){
   for(const item of outbox().filter(x=>x.ready)){
     try{ await insertRecord(item.rec); outboxRemove(item.cid);
       const e=logEntries.find(x=>x.cid===item.cid); if(e){ e.state="ok"; }
-    }catch(err){ /* keep for next time */ }
+    }catch(err){ console.error("[flushOutbox] insert失敗:", err?.code||"", err?.message||err); }
   }
   // 人数入力中は画面を作り直さない（回答フローを中断させない）
   if(view==="report" && !answering && !pending) renderMain();
@@ -357,7 +366,7 @@ function pickClass(cls){
   const now=Date.now();
   // クラスタップ“前”の直近PRE_MS秒の測位を取り込む（前倒し）
   const seed = preBuffer.filter(p=>p._ms>=now-PRE_MS).map(({_ms,...pt})=>pt);
-  pending = { cid: crypto.randomUUID(), congestion_class:cls, exact_count:null,
+  pending = { cid: uuid(), congestion_class:cls, exact_count:null,
               answered_at:new Date().toISOString(),
               firstTs: seed.length ? (now-PRE_MS) : now, trajectory: seed };
   startSampling();
@@ -380,7 +389,8 @@ function stopCandidates(q){
     for(const s of S){ const n=s.n.toLowerCase(); if(n.startsWith(ql)) pre.push(s); else if(n.includes(ql)) sub.push(s); }
     arr = pre.concat(sub);
   }
-  return arr.slice(0,8).map(s=> loc ? Object.assign({_d:jhav(loc[0],loc[1],s.a,s.o)}, s) : Object.assign({}, s));
+  const cap = ql ? 200 : 20;   // 入力あり=該当を全部(最大200)スクロール表示 / 空欄=近い順20件
+  return arr.slice(0,cap).map(s=> loc ? Object.assign({_d:jhav(loc[0],loc[1],s.a,s.o)}, s) : Object.assign({}, s));
 }
 function wireStopField(inputId, listId, selId, field){
   const inp=$(inputId), list=$(listId), sel=$(selId);
@@ -399,7 +409,10 @@ function wireStopField(inputId, listId, selId, field){
     // clickで確定（ドラッグ＝スクロール時はclickが発火しないので、スクロールと両立）
     list.querySelectorAll(".stoprow").forEach(row=>{ row.addEventListener("click",()=>choose(cs[+row.dataset.i])); });
   };
-  inp.addEventListener("input", ()=>{ if(pending) pending[field]=null; sel.innerHTML=""; render(inp.value); });
+  inp.addEventListener("input", ()=>{ if(pending) pending[field]=null;
+    // 文字はあるが未選択 → 「候補から選んで」を表示（この状態では保存されない）
+    sel.innerHTML = inp.value.trim() ? `<span style="color:var(--muted)">${T[lang].stop_pick_hint}</span>` : "";
+    render(inp.value); });
   inp.addEventListener("focus", ()=>{ if(!inp.value) render(""); });
   // blurでの自動閉じはしない（一覧のスクロールを妨げるため）。一覧外タップで閉じる（下の共通ハンドラ）。
   if(pending && pending[field]){                       // 既存選択を復元
@@ -422,17 +435,20 @@ const COUNT_RANGES=[[0,5],[6,15],[16,25],[26,40],[41,55],[56,99]];
 function renderCount(){
   const t=T[lang];
   const [lo,hi]=COUNT_RANGES[pending.congestion_class-1];
-  let n=lo;                       // 初期値はそのクラスの下限
+  const step2=(hi-lo)<=10?5:10;   // クラス範囲が狭ければ大ステップは5、広ければ10
+  let n=null;                     // 未入力（触るまでnull＝数えていない）
   const cls=t.classes[pending.congestion_class-1];
   main.innerHTML = `
     <button class="backbtn" id="backPick">← ${t.back}</button>
     <div class="center">
       <div class="selchip"><span class="chip c${pending.congestion_class}">${pending.congestion_class}</span>${cls.lbl}（${cls.rng}）</div>
-      <h2>${t.countTitle}</h2><p class="hint">${t.countHint}</p>
+      <h2>${t.countTitle}</h2>
+      <div class="rangeind">${t.count_range}：<b>${cls.rng}</b></div>
+      <p class="hint">${t.countHint}</p>
       <div class="stepper">
-        <button data-d="-10">−10</button><button data-d="-1">−</button>
-        <div class="count" id="cval">0</div>
-        <button data-d="1">＋</button><button data-d="10">+10</button>
+        <button data-d="-${step2}">−${step2}</button><button data-d="-1">−</button>
+        <div class="count" id="cval">—</div>
+        <button data-d="1">＋</button><button data-d="${step2}">+${step2}</button>
       </div>
       <div class="stopwrap">
         <div class="stopfield">
@@ -456,9 +472,13 @@ function renderCount(){
   wireStopField("boardInput","boardList","boardSel","board_stop");
   wireStopField("destInput","destList","destSel","dest_stop");
   const cval=$("cval");
-  const show=()=>{ cval.textContent = (hi>=99 && n>=99)?"99+":String(n); };
-  show();                         // 初期表示（下限）
-  main.querySelectorAll(".stepper button").forEach(b=>{ b.onclick=()=>{ n=Math.max(lo,Math.min(hi,n+parseInt(b.dataset.d,10))); show(); }; });
+  const show=()=>{ cval.textContent = (n===null)?"—":((hi>=99 && n>=99)?"99+":String(n)); };
+  show();                         // 初期は「—」＝未入力
+  main.querySelectorAll(".stepper button").forEach(b=>{ b.onclick=()=>{
+    const d=parseInt(b.dataset.d,10);
+    n=Math.max(lo,Math.min(hi,(n===null?lo:n)+d));   // 初回タップはlo基準・範囲内にクランプ
+    show();
+  }; });
   $("sendBtn").onclick=()=>{ answering=false; pending.exact_count=n; submit(); };
   $("skipBtn").onclick=()=>{ answering=false; pending.exact_count=null; submit(); };
   $("backPick").onclick=cancelPick;
@@ -521,7 +541,7 @@ async function finalizeNow(immediate){
   let ok=false;
   if(user){
     try{ await insertRecord(rec); ok=true; outboxRemove(p.cid); }
-    catch(err){ ok=false; }
+    catch(err){ ok=false; console.error("[finalizeNow] insert失敗:", err?.code||"", err?.message||err); }
   }
   if(!ok){ outboxUpsert({ cid:p.cid, ready:true, rec }); }
   if(entry){ entry.state = ok?"ok":"pend"; entry.npts=p.trajectory.length; delete entry.remain; }
