@@ -163,7 +163,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-1.1";
+const APP_VERSION = "phaseA-1.2";
 
 /* 管理者アカウント: ここに載るメールのみ「データ一覧」を閲覧・遷移できる。
    スタッフ（それ以外）にはデータ一覧ボタン自体を表示しない。必要に応じて編集。
@@ -324,8 +324,9 @@ function outboxUpsert(item){ const a=outbox(); const i=a.findIndex(x=>x.cid===it
 function outboxRemove(cid){ saveOutbox(outbox().filter(x=>x.cid!==cid)); }
 
 async function insertRecord(rec){
-  // rec: {answered_at, congestion_class, exact_count, trajectory, lang, app_version}
-  const { error } = await sb.from("responses").insert(rec);
+  // 実際に送信する瞬間の端末時刻を付与（サーバのcreated_atとの差＝端末時計のズレ検出用）
+  const payload = Object.assign({}, rec, { client_submitted_at: new Date().toISOString() });
+  const { error } = await sb.from("responses").insert(payload);
   if(error) throw error;
 }
 async function flushOutbox(){
@@ -523,10 +524,22 @@ function cancelPick(){
   renderMain();                 // クラス選択画面へ
 }
 
+// 回答の代表GPS点（answered_atに最も近い軌跡点）。軌跡が空なら位置なし。
+function repPoint(p){
+  const tj=p.trajectory||[];
+  if(!tj.length) return { lat:null, lng:null, acc:null, at:null };
+  const ansSec=Math.floor(new Date(p.answered_at).getTime()/1000);
+  let best=tj[0], bd=Math.abs((tj[0].t||0)-ansSec);
+  for(const q of tj){ const d=Math.abs((q.t||0)-ansSec); if(d<bd){ bd=d; best=q; } }
+  return { lat: best.lat??null, lng: best.lng??null, acc: best.acc??null,
+           at: best.t ? new Date(best.t*1000).toISOString() : null };
+}
 function buildRec(p){
+  const rp=repPoint(p);
   return { answered_at:p.answered_at, congestion_class:p.congestion_class,
            exact_count:p.exact_count, trajectory:p.trajectory,
            board_stop:p.board_stop||null, dest_stop:p.dest_stop||null,
+           lat:rp.lat, lng:rp.lng, gps_accuracy:rp.acc, gps_fixed_at:rp.at,   // 代表位置(独立カラム)
            lang:lang, app_version:APP_VERSION };
 }
 function syncPendingToOutbox(ready){

@@ -13,11 +13,27 @@ create table if not exists public.responses (
   congestion_class smallint    not null,                       -- 1〜6
   exact_count      integer,                                    -- 実測人数(任意, null可)
   trajectory       jsonb,                                      -- 回答中〜直後の短い軌跡 [{t,lat,lng,acc},...]
+  board_stop       jsonb,                                      -- 乗車バス停 {name,lat,lng}(任意)
+  dest_stop        jsonb,                                      -- 行先バス停 {name,lat,lng}(任意)
+  lat              double precision,                           -- 代表位置(緯度) answered_at最寄りの軌跡点
+  lng              double precision,                           -- 代表位置(経度)
+  gps_accuracy     real,                                       -- 代表位置の精度(m)
+  gps_fixed_at     timestamptz,                                -- 代表位置の測位時刻
+  client_submitted_at timestamptz,                             -- 実際に送信した端末時刻(時計ズレ検出用)
   lang             text,
   app_version      text,
   constraint congestion_class_range check (congestion_class between 1 and 6),
   constraint exact_count_nonneg     check (exact_count is null or exact_count >= 0)
 );
+
+-- 既存テーブルに後から列を足す場合（冪等）:
+alter table public.responses add column if not exists board_stop jsonb;
+alter table public.responses add column if not exists dest_stop  jsonb;
+alter table public.responses add column if not exists lat double precision;
+alter table public.responses add column if not exists lng double precision;
+alter table public.responses add column if not exists gps_accuracy real;
+alter table public.responses add column if not exists gps_fixed_at timestamptz;
+alter table public.responses add column if not exists client_submitted_at timestamptz;
 
 create index if not exists responses_created_at_idx on public.responses (created_at desc);
 create index if not exists responses_surveyor_idx   on public.responses (surveyor_id);
