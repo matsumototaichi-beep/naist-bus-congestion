@@ -163,7 +163,13 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-1.0";
+const APP_VERSION = "phaseA-1.1";
+
+/* 管理者アカウント: ここに載るメールのみ「データ一覧」を閲覧・遷移できる。
+   スタッフ（それ以外）にはデータ一覧ボタン自体を表示しない。必要に応じて編集。
+   ※これは画面上の制御。真のアクセス制限にはSupabase側RLSも別途必要（相談）。 */
+const ADMIN_EMAILS = ["taichi1104.deters@gmail.com"];
+function isAdmin(){ return !!(user && ADMIN_EMAILS.map(s=>s.toLowerCase()).includes((user.email||"").toLowerCase())); }
 
 /* 軌跡サンプリング設定 */
 const SAMPLE_MS = 2500;   // サンプル間隔(約2.5秒)
@@ -228,7 +234,8 @@ const T = {
     feed_all:"すべての混雑度", feed_update:"更新", feed_loading:"読み込み中…",
     feed_empty:"まだ報告がありません", feed_count:(n)=>`${n}件を表示中`,
     staff_tag:"スタッフ", feed_err:"読み込みに失敗しました",
-    feed_login:"データ一覧を見るにはログインが必要です。", feed_login_btn:"ログインへ",
+    feed_login:"データ一覧を見るにはログインが必要です。", feed_login_btn:"報告へ戻る",
+    feed_admin_only:"データ一覧は管理者のみ閲覧できます。",
     forgot:"パスワードを忘れた方",
     reset_title:"パスワード再設定", reset_desc:"登録したメールアドレスに、再設定用リンクを送ります。",
     reset_send:"再設定メールを送る", reset_sent:"再設定メールを送信しました。同じ端末のこのブラウザでメール内のリンクを開いてください。",
@@ -272,7 +279,8 @@ const T = {
     feed_all:"All levels", feed_update:"Refresh", feed_loading:"Loading…",
     feed_empty:"No reports yet", feed_count:(n)=>`Showing ${n}`,
     staff_tag:"Staff", feed_err:"Failed to load",
-    feed_login:"Please sign in to view the data.", feed_login_btn:"Go to sign in",
+    feed_login:"Please sign in to view the data.", feed_login_btn:"Back to report",
+    feed_admin_only:"The data list is available to administrators only.",
     forgot:"Forgot your password?",
     reset_title:"Reset password", reset_desc:"We'll email a reset link to your registered address.",
     reset_send:"Send reset email", reset_sent:"Reset email sent. Open the link in this same browser.",
@@ -598,12 +606,16 @@ function updateNav(){
   $("langBtn").textContent=t.langLabel;
   $("sess").innerHTML = (user && view==="report") ? t.who(handleName()) : "";
   $("outBtn").style.display = user ? "" : "none";
+  // データ一覧は管理者のみ。スタッフにはボタンを出さない
+  const adminOK = isAdmin();
+  $("navReport").classList.toggle("solo", !adminOK);   // 管理者以外は「報告」だけ
+  $("navFeed").style.display = adminOK ? "" : "none";
   // パスワード再設定中はナビを隠して画面に集中させる
   const focus = (view==="report" && (authMode==="reset" || authMode==="newpass"));
   $("navReport").style.visibility = focus ? "hidden" : "";
-  $("navFeed").style.visibility  = focus ? "hidden" : "";
+  $("navFeed").style.visibility  = (focus||!adminOK) ? "hidden" : "";
 }
-function setView(v){ view=v; render(); }
+function setView(v){ if(v==="feed" && !isAdmin()) v="report"; view=v; render(); }
 function render(){
   updateNav();
   if(view==="feed"){ renderFeed(); return; }
@@ -614,8 +626,8 @@ function render(){
 /* ---------------- データ一覧（公開ビュー report_feed を表示） ---------------- */
 function renderFeed(){
   const t=T[lang];
-  if(!user){   // データ一覧はログイン必須
-    main.innerHTML=`<div class="login"><h1>${t.feed_title}</h1><p>${t.feed_login}</p>
+  if(!user || !isAdmin()){   // データ一覧は管理者のみ（未ログイン/スタッフは報告へ）
+    main.innerHTML=`<div class="login"><h1>${t.feed_title}</h1><p>${!user?t.feed_login:t.feed_admin_only}</p>
       <button class="btn primary" id="toLogin">${t.feed_login_btn}</button></div>`;
     $("toLogin").onclick=()=>setView("report");
     setStatus(); return;
