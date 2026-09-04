@@ -1,7 +1,8 @@
 -- ============================================================
--- データ一覧（公開用）ビュー
--- responses から「安全な列だけ」を全員に見せる。
+-- データ一覧（管理者用）ビュー
+-- responses から「安全な列だけ」を、管理者のみに見せる。
 -- 軌跡(trajectory)・surveyor_id・メール等の個人情報は含めない。
+-- ★アプリ側 ADMIN_EMAILS と同じメールをここにも列挙すること。
 -- Supabase SQL Editor に貼って実行してください。
 -- ============================================================
 
@@ -13,12 +14,12 @@ create or replace view public.report_feed as
     congestion_class,
     exact_count,
     app_version
-  from public.responses;
+  from public.responses
+  -- 管理者のみ行を返す（それ以外のログインユーザーは0件）。UI制限だけでなくサーバー側でも制限。
+  where auth.email() in ('taichi1104.deters@gmail.com', 'admin@id.local');
 
--- ログイン済みユーザーのみ閲覧可（未ログインの匿名からは読めない）
--- （ビューは所有者権限で実行されるため responses のRLSは通さず、
---   ここで許可した安全な列だけが読める。生データ本体は本人のみのまま）
-revoke select on public.report_feed from anon;      -- 匿名は不可
+-- 匿名は不可、ログイン済みにSELECT権限（実際に見えるのは上のWHEREを満たす管理者のみ）
+revoke select on public.report_feed from anon;
 grant  select on public.report_feed to authenticated;
 
 -- 反映されない場合は PostgREST にスキーマ再読込を通知
