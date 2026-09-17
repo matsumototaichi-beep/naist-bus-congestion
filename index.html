@@ -20,10 +20,10 @@
   header{flex:0 0 auto; padding:7px 12px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line); background:var(--panel);}
   .brand{flex:0 0 auto; font-size:14px; font-weight:800; display:flex; flex-direction:column; line-height:1.15;}
   .brand .staff{font-size:10px; font-weight:600; color:var(--muted);}
-  .nav{flex:1; display:flex; gap:4px; justify-content:center;}
-  .navb{border:none; background:transparent; color:var(--muted); font-family:inherit; font-size:13px; font-weight:700; padding:7px 12px; border-radius:9px;}
+  .nav{flex:1 1 auto; min-width:0; display:flex; gap:4px; justify-content:center;}
+  .navb{flex:0 0 auto; white-space:nowrap; border:none; background:transparent; color:var(--muted); font-family:inherit; font-size:13px; font-weight:700; padding:7px 12px; border-radius:9px;}
   .navb.on{background:var(--bg); color:var(--ink);}
-  .hactions{flex:0 0 auto; display:flex; align-items:center; gap:7px;}
+  .hactions{flex:0 1 auto; min-width:0; display:flex; align-items:center; gap:7px;}
   .sess{min-width:0; font-size:11px; color:var(--muted); line-height:1.2; max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .sess b{color:var(--ink); font-weight:600;}
   .iconbtn{flex:0 0 auto; border:1px solid var(--line); background:transparent; color:var(--ink); border-radius:10px; padding:7px 10px; font-size:13px; font-weight:600;}
@@ -113,6 +113,9 @@
   .stepper button:active{background:var(--line);}
   .row{display:flex; gap:10px; width:100%; max-width:420px;}
   .row.actions{flex-direction:column;}   /* 通常は縦積み。縦の短い端末では横並びに切替（下部@media） */
+  /* 送信/スキップはスクロール領域の下端に固定。画面の低い端末やキーボード表示中でも
+     常に見えるようにする（bus-ui-study 側で先に入れた対応の移植） */
+  .row.actions{position:sticky; bottom:0; z-index:2; background:var(--bg); padding:8px 0 2px;}
   .btn{flex:1; border:none; border-radius:14px; padding:15px; font-size:15px; font-weight:700; font-family:inherit; color:#fff;}
   .btn.primary{background:#2563eb;} .btn.ghost{background:transparent; color:var(--muted); border:1px solid var(--line);}
   .btn.gh{background:#24292f; display:inline-flex; align-items:center; justify-content:center; gap:10px;}
@@ -173,7 +176,11 @@
     .row.actions{flex-direction:row;}
     #sendBtn{flex:2;} #skipBtn{flex:1;}
   }
-  @media (max-width:360px){
+  /* 320px級ではナビ「データ一覧」が切れるので、優先度の低いログイン名を落として幅を譲る
+     （ログイン中かどうかは⎋ボタンの有無で分かる） */
+  @media (max-width:360px){ .sess{display:none;} }
+  @media (max-width:400px){
+    header{gap:7px; padding:7px 9px;}
     .brand{font-size:13px;}
     .navb{font-size:12px; padding:6px 9px;}
     .sess{max-width:70px; font-size:10px;}
@@ -218,7 +225,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-1.5";
+const APP_VERSION = "phaseA-1.6";
 
 /* 管理者アカウント: ここに載るメールのみ「データ一覧」を閲覧・遷移できる。
    スタッフ（それ以外）にはデータ一覧ボタン自体を表示しない。必要に応じて編集。
@@ -370,6 +377,9 @@ function setStatus(msg,warn){
   const s=$("status"); const n=outbox().length;
   let base = msg||"";
   if(n>0) base = (base?base+" · ":"") + T[lang].pendingN(n);
+  // 版番号を常に表示する。どの版を見ているか画面から分からないと、
+  // 修正済みかどうかの確認で食い違う（キャッシュで旧版のままの場合もある）
+  base = (base?base+" · ":"") + APP_VERSION;
   s.textContent = base;
   s.className = "statusbar" + (warn?" warn":"");
 }
@@ -530,7 +540,8 @@ const COUNT_MIN=0, COUNT_MAX=99;
 function renderCount(){
   const t=T[lang];
   const [lo,hi]=COUNT_RANGES[pending.congestion_class-1];
-  let n=null;                     // 未入力（触るまでnull＝数えていない）
+  // 入力途中の値は pending に持たせる。言語切替やナビで再描画されても消えないようにするため
+  let n = (pending.exact_count===undefined) ? null : pending.exact_count;
   const cls=t.classes[pending.congestion_class-1];
   main.innerHTML = `
     <button class="backbtn" id="backPick">← ${t.back}</button>
@@ -576,9 +587,10 @@ function renderCount(){
     const d=parseInt(b.dataset.d,10);
     // 初回タップはクラスの目安下限(lo)から開始（タップ数削減）。値はクラスに縛らず 0〜99 で自由。
     n=Math.max(COUNT_MIN,Math.min(COUNT_MAX,(n===null?lo:n)+d));
+    pending.exact_count=n;
     show();
   }; });
-  $("sendBtn").onclick=()=>{ answering=false; pending.exact_count=n; submit(); };
+  $("sendBtn").onclick=()=>{ answering=false; pending.exact_count=n; submit(); };   // n は pending と同値
   $("skipBtn").onclick=()=>{ answering=false; pending.exact_count=null; submit(); };
   $("backPick").onclick=cancelPick;
 }
@@ -730,7 +742,13 @@ function setView(v){ if(v==="feed" && !isAdmin()) v="report"; view=v; render(); 
 function render(){
   updateNav();
   if(view==="feed"){ renderFeed(); return; }
-  if(user && authMode!=="newpass"){ renderMain(); }   // 通常のログイン中
+  if(user && authMode!=="newpass"){
+    // 人数入力中にナビ「報告」や言語切替を押しても、入力中の回答を捨てずに描き直す。
+    // renderMain() に戻すと n が消えるうえ pending が残り、次のクラス選択で
+    // exact_count=null の行が画面ログに出ないまま送信されてしまう
+    if(view==="report" && answering && pending) renderCount();
+    else renderMain();
+  }
   else { renderAuth(); }                               // 未ログイン or パスワード再設定中
 }
 
