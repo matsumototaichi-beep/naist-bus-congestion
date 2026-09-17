@@ -226,7 +226,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-1.9";
+const APP_VERSION = "phaseA-1.10";
 
 /* 管理者アカウント: ここに載るメールのみ「データ一覧」を閲覧・遷移できる。
    スタッフ（それ以外）にはデータ一覧ボタン自体を表示しない。必要に応じて編集。
@@ -283,7 +283,7 @@ const T = {
       {lbl:"ガラガラ", rng:"0〜5人"},{lbl:"やや空き", rng:"6〜15人"},{lbl:"席が埋まる", rng:"16〜25人"},
       {lbl:"立ち客", rng:"26〜40人"},{lbl:"混雑", rng:"41〜55人"},{lbl:"満員近い", rng:"56人〜"},
     ],
-    countTitle:"正確な人数（自分を含む・任意）",
+    countTitle:"自分を含めた正確な乗客数（任意）",
     back:"戻る", already_registered:"このメールは登録済みです。「ログイン」から入ってください。",
     board_label:"乗車バス停（任意）", dest_label:"降車バス停（任意）",
     board_ph:"バス停名を選択（任意）", dest_ph:"バス停名を選択（任意）",
@@ -329,7 +329,7 @@ const T = {
       {lbl:"Empty", rng:"0–5"},{lbl:"Fairly empty", rng:"6–15"},{lbl:"Seats filling up", rng:"16–25"},
       {lbl:"Some standing", rng:"26–40"},{lbl:"Crowded", rng:"41–55"},{lbl:"Nearly full", rng:"56+"},
     ],
-    countTitle:"Exact count, including you (optional)",
+    countTitle:"Passengers incl. you (optional)",
     back:"Back", already_registered:"This email is already registered. Please sign in instead.",
     board_label:"Boarding stop (optional)", dest_label:"Alighting stop (optional)",
     board_ph:"Select a stop name (optional)", dest_ph:"Select a stop name (optional)",
