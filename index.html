@@ -102,7 +102,10 @@
   .selchip .chip{width:24px; height:24px;}
   .selchip .rng{font-size:12px; font-weight:600; color:var(--muted);}
   /* −と＋の間に人数を挿す（ボタンが何を増減させるのか一目で分かるように） */
-  .stepper{display:grid; grid-template-columns:repeat(3,1fr) 1.7fr repeat(3,1fr); gap:5px; align-items:stretch; width:100%; max-width:420px;}
+  /* ±1/±5 の4ボタン。±10 を外したのは、実データ(n=6597)で削減が平均0.03タップ・寄与2.8%しかない一方、
+     7列だとボタン幅が 35.3px(320px端末)/41.7px(375px端末) と全機種で HIG 44pt を割るため（原則A7）。
+     5列なら 49.1/58.1px で基準を満たす */
+  .stepper{display:grid; grid-template-columns:repeat(2,1fr) 1.7fr repeat(2,1fr); gap:5px; align-items:stretch; width:100%; max-width:420px;}
   .stepper button{height:56px; padding:0; border-radius:12px; border:1px solid var(--line); background:var(--panel); color:var(--ink); font-size:15px; font-weight:800; font-family:inherit; font-variant-numeric:tabular-nums;}
   /* 人数の表示枠：ここに数字が入ると一目で分かるよう常に囲う。未入力は破線・入力後は青の実線 */
   .count{display:flex; align-items:center; justify-content:center; border-radius:12px;
@@ -225,7 +228,7 @@
    ========================================================== */
 const SUPABASE_URL      = "https://qhfegbptgkgccwdnrnas.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_SZKczNkJSCrilMnACZ4Xnw_CV5UeZWN";  // 公開してよい publishable key
-const APP_VERSION = "phaseA-1.6";
+const APP_VERSION = "phaseA-1.7";
 
 /* 管理者アカウント: ここに載るメールのみ「データ一覧」を閲覧・遷移できる。
    スタッフ（それ以外）にはデータ一覧ボタン自体を表示しない。必要に応じて編集。
@@ -550,9 +553,9 @@ function renderCount(){
       <h2>${t.countTitle}</h2>
       <p class="hint">${t.countHint}</p>
       <div class="stepper">
-        <button class="mi" data-d="-10">−10</button><button class="mi" data-d="-5">−5</button><button class="mi" data-d="-1">−1</button>
+        <button class="mi" data-d="-5">−5</button><button class="mi" data-d="-1">−1</button>
         <div class="count noval" id="cval">—</div>
-        <button class="pl" data-d="1">＋1</button><button class="pl" data-d="5">＋5</button><button class="pl" data-d="10">＋10</button>
+        <button class="pl" data-d="1">＋1</button><button class="pl" data-d="5">＋5</button>
       </div>
       <div class="stopwrap">
         <div class="stopfield">
